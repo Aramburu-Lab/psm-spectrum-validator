@@ -1,0 +1,991 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Validator Flowchart</title>
+<meta name="description" content="How the PSM Spectrum Validator judges a spectrum: the files it reads, then eight questions to one of six verdicts.">
+<style>
+/* Colours are not here: they are THEME in flow-core, written onto :root at load, so the contrast test reads the
+   very values the page draws with. */
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg, #fff); color: var(--ink, #000);
+  font: 16px/1.45 Arial, "Liberation Sans", Helvetica, sans-serif; }
+main { max-width: 820px; margin: 0 auto; padding: 20px 16px 32px; }
+h1 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 12px; }
+/* The stage is told to screen readers only: the page shows no caption of its own. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+#wrap { width: 100%; }
+#stage { display: block; width: 100%; height: auto; overflow: visible; }
+.controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; min-height: 40px; }
+/* The running and done buttons join the row itself, so on a narrow line "Show the SVG text" wraps before the speed
+   buttons leave Repeat, PDF and SVG. */
+.group { display: contents; }
+.group[hidden] { display: none; }
+.pace { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+#showSvg { order: 1; }
+#speed { font-size: 0.95rem; color: var(--muted); }
+button { font: inherit; font-size: 0.95rem; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+  border: 1.5px solid var(--ink); background: var(--bg); color: var(--ink); }
+button.primary { background: var(--ink); color: var(--bg); }
+/* A dashed border, not a faded one, so a disabled button keeps its text contrast. */
+button:disabled { border-style: dashed; cursor: not-allowed; }
+button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.linkish { border: none; padding: 8px 4px; text-decoration: underline; background: none; }
+#svgText { width: 100%; min-height: 10em; margin-top: 10px; font: 12px/1.35 ui-monospace, Menlo, Consolas, "Liberation Mono", monospace;
+  background: var(--card); color: var(--ink); border: 1px solid var(--cardline); }
+.cite { font-size: 0.8rem; line-height: 1.4; color: var(--muted); margin: 6px 0 0; overflow-wrap: anywhere; }
+.cite a { color: var(--ink); }
+.note { font-size: 0.85rem; color: var(--muted); margin-top: 18px; }
+
+/* The stage. Every class below is screen-only: the exports are written from the chart's primitives, never from here. */
+#stage text { font-family: Arial, "Liberation Sans", Helvetica, sans-serif; }
+#stage .mono { font-family: ui-monospace, Menlo, Consolas, "Liberation Mono", monospace; }
+#stage .card, #stage .node, #stage .edge, #stage .elabel, #stage .inputs, #stage .stream {
+  transition: opacity 450ms cubic-bezier(.45, 0, .25, 1); }
+#stage.scene-inputs .node:not([data-id="start"]), #stage.scene-inputs .edge, #stage.scene-inputs .elabel { opacity: 0; }
+#stage.scene-inputs .node[data-id="start"].await { opacity: 0; }
+#stage.scene-chart .inputs { opacity: 0; }
+#stage .card { opacity: 0; }
+#stage .card.in { opacity: 1; }
+#stage.running .node, #stage.running .edge, #stage.running .elabel,
+#stage.picking .node, #stage.picking .edge, #stage.picking .elabel { opacity: .3; }
+#stage.running .lit, #stage.picking .lit { opacity: 1; }
+#stage.final .verdict { cursor: pointer; }
+#stage .verdict:focus { outline: none; }
+#stage .verdict:focus-visible .pill { stroke: var(--focus); stroke-width: 3; }
+#stage .elabel text { transition: font-size 300ms ease; }
+#stage .stream path { fill: none; stroke-linecap: round; stroke-width: 3; }
+#stage .stream path.flowing { stroke-dasharray: 3 7; animation: flow 1.6s linear infinite; }
+@keyframes flow { to { stroke-dashoffset: -20; } }
+#stage .win .pill { filter: url(#glow); }
+#stage .lit .qbox { filter: url(#glow-ink); }
+</style>
+</head>
+<body>
+<main>
+  <h1>PSM Spectrum Validator</h1>
+  <p id="announce" class="sr-only" aria-live="polite"></p>
+  <div id="wrap"><svg id="stage" role="img" aria-labelledby="stageTitle"><title id="stageTitle">The PSM Spectrum Validator flowchart</title></svg></div>
+  <p class="cite" id="cite">Flowchart adapted from Deutsch, E.W., Kok, L.W., Mudge, J.M. et al. Expanding the human proteome
+    with microproteins and peptideins. Nature 654, 813&#8211;825 (2026).
+    <a href="https://doi.org/10.1038/s41586-026-10459-x">https://doi.org/10.1038/s41586-026-10459-x</a></p>
+  <div class="controls">
+    <div class="group" id="running">
+      <button type="button" id="skip">Skip to the flowchart</button>
+    </div>
+    <div class="group" id="done" hidden>
+      <button type="button" class="primary" id="repeat">Repeat the flow</button>
+      <button type="button" id="savePdf" aria-label="Save the flowchart as PDF">PDF</button>
+      <button type="button" id="saveSvg" aria-label="Save the flowchart as SVG">SVG</button>
+      <button type="button" class="linkish" id="showSvg">Show the SVG text</button>
+    </div>
+    <div class="pace" role="group" aria-label="Reading pace">
+      <button type="button" id="slower">Slow down</button>
+      <button type="button" id="faster">Speed up</button>
+      <span id="speed" aria-live="polite">100 words per minute</span>
+    </div>
+  </div>
+  <p id="saveNote" class="note" aria-live="polite"></p>
+  <textarea id="svgText" readonly hidden aria-label="The flowchart as SVG text"></textarea>
+  <!-- The questions, short names and verdicts are the validator's own, from settings/spectrum_validator/questions.md,
+       and the arrows are its FLOW. The example records on the file cards are illustrations: their m/z values are the
+       peptides' theoretical precursor and b and y ions, while intensities, scan numbers and the hyperscore are made up.
+       PDF and SVG save the full flowchart at 170 mm wide. -->
+</main>
+
+<!-- The flowchart's single source is the validator: tests/test_validator_flowchart.py holds this block equal to
+     its FLOW and OUTCOMES and to settings/spectrum_validator/questions.md, so a change there fails until it is copied here. -->
+<script type="application/json" id="flow-data">
+{
+  "questions": {
+    "q1": {"name": "Coverage", "text": "Do the b and y ion series yield nearly complete coverage?", "yes": "q2", "no": "q7"},
+    "q2": {"name": "Unannotated ions", "text": "Are there unannotated ions with appropriate mass defect in gaps between annotated ions?", "yes": "q4", "no": "q3"},
+    "q3": {"name": "Prominent ions", "text": "Do the prominent ions have good explanations?", "yes": "excellent", "no": "q4"},
+    "q4": {"name": "Extra peaks", "text": "Are there extra peaks not needed in the explanation of the proposed peptide?", "yes": "contam", "no": "good"},
+    "q7": {"name": "Major gaps", "text": "Are there major gaps in coverage?", "yes": "q8", "no": "q5"},
+    "q5": {"name": "Gap explanations", "text": "Do gaps between annotated ions have a good explanation?", "yes": "q6", "no": "close"},
+    "q6": {"name": "Peaks beyond the end", "text": "Are there prominent peaks beyond where annotated peaks end, suggesting incorrect sequence?", "yes": "close", "no": "contam"},
+    "q8": {"name": "Peaks in the gaps", "text": "Are there prominent peaks in the gaps?", "yes": "fp", "no": "lowinfo"}
+  },
+  "outcomes": {
+    "excellent": "Excellent",
+    "good": "Good",
+    "contam": "Good but some contamination",
+    "close": "Close but false positive",
+    "fp": "False positive",
+    "lowinfo": "Low information"
+  },
+  "runs": [
+    {"verdict": "excellent", "path": [["q1", "yes"], ["q2", "no"], ["q3", "yes"]]},
+    {"verdict": "good", "path": [["q1", "yes"], ["q2", "yes"], ["q4", "no"]]},
+    {"verdict": "contam", "path": [["q1", "yes"], ["q2", "yes"], ["q4", "yes"]]},
+    {"verdict": "close", "path": [["q1", "no"], ["q7", "no"], ["q5", "no"]]},
+    {"verdict": "fp", "path": [["q1", "no"], ["q7", "yes"], ["q8", "yes"]]},
+    {"verdict": "lowinfo", "path": [["q1", "no"], ["q7", "yes"], ["q8", "no"]]}
+  ]
+}
+</script>
+
+<script id="flow-core">
+"use strict";
+// Everything the exports need, with no DOM: tests/flowchart_exports.js runs this block alone in node.
+const DATA = JSON.parse(globalThis.FLOW_DATA_TEXT || document.getElementById("flow-data").textContent);
+const START = Object.freeze({title: "PSM Spectrum Validator", sub: "reads spectra.mgf, and controls.mgf if given"});
+// "Adapted": the tool's question 3 is reworded from the paper's. The page's caption under the chart is this text too,
+// and the test holds the two equal.
+const CITATION = Object.freeze({text: "Flowchart adapted from Deutsch, E.W., Kok, L.W., Mudge, J.M. et al. Expanding the human " +
+  "proteome with microproteins and peptideins. Nature 654, 813\u2013825 (2026).", doi: "https://doi.org/10.1038/s41586-026-10459-x"});
+
+// Every size, width and colour of the chart, once. Units are points: the chart is laid out in pt, so the export at
+// 170 mm (481.89 pt) carries these sizes exactly, and the screen scales the same drawing.
+const STYLE = Object.freeze({
+  font: "Arial, 'Liberation Sans', Helvetica, sans-serif",
+  // Verdicts are 9 pt so six equal boxes fit across 170 mm: "contamination" alone is 68 pt wide at 10 pt bold.
+  size: {title: 12, node: 10, text: 9, label: 9, verdict: 9, mono: 8, tag: 8, caption: 8},
+  lead: {title: 15, node: 12.5, text: 11, verdict: 11, mono: 10.5, caption: 10},
+  line: 1, box: 1.5, arrow: 5, padX: 7, padY: 5, pillPad: 5, radius: 3, pillRadius: 8,
+  widthMm: 170, widthPt: 481.89,
+});
+const WONG = Object.freeze({black: "#000000", orange: "#E69F00", skyBlue: "#56B4E9", bluishGreen: "#009E73",
+  yellow: "#F0E442", blue: "#0072B2", vermillion: "#D55E00", reddishPurple: "#CC79A7"});
+// Eight roles need colour and Wong has seven besides black, so Low information, the verdict that makes no call,
+// takes the neutral grey. Black is ink only.
+const NEUTRAL = "#8C8C8C";
+const ROLE = Object.freeze({ink: WONG.black, yes: WONG.blue, no: WONG.vermillion,
+  excellent: WONG.bluishGreen, good: WONG.skyBlue, contam: WONG.yellow, close: WONG.orange,
+  fp: WONG.reddishPurple, lowinfo: NEUTRAL});
+// The screen's own tokens. The verdict fills and the Yes and No lines keep their role colours in both themes; only
+// ink, paper and the cards change.
+const THEME = Object.freeze({
+  light: {bg: "#FFFFFF", ink: "#000000", muted: "#4D4D4D", card: "#F4F4F2", cardline: "#BDBDBD", focus: "#0072B2", stream: "#56B4E9"},
+  dark: {bg: "#141517", ink: "#F2F2F2", muted: "#BDBDBD", card: "#1F2124", cardline: "#4A4D52", focus: "#56B4E9", stream: "#56B4E9"},
+});
+
+/* ---------- copied verbatim from the validator, deliverables/2026-10-28_spectrum_validator_v2.html ---------- */
+// HELV, HELVB, WIDE, glyphW, winAnsi and figurePdf are the validator's own, behind its Save PDF button. figurePdf
+// reads an SVG DOM; pdfShim below hands it the chart's primitives in that shape, so its body is unchanged.
+// Helvetica's widths in 1/1000 em for codes 32 to 126 of WinAnsiEncoding, from Adobe's AFM files
+// phvr8a and phvb8a; Courier is 600 throughout. They place text anchored at its middle or its end.
+const HELV = [278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
+  556, 556, 278, 278, 584, 584, 584, 556, 1015, 667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, 722, 778, 667, 778,
+  722, 667, 611, 722, 667, 944, 667, 667, 611, 278, 278, 278, 469, 556, 333, 556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500,
+  222, 833, 556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, 334, 260, 334, 584];
+const HELVB = [278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556, 556, 556, 556, 556,
+  556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778, 722, 278, 556, 722, 611, 833, 722, 778, 667, 778,
+  722, 667, 611, 722, 667, 944, 667, 667, 611, 333, 278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556,
+  278, 889, 611, 611, 611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584];
+const WIDE = {0xb7: 278, 0xb1: 584, 0xd7: 584, 0xb2: 333, 0xb3: 333, 0xb9: 333};
+const glyphW = (code, mono, bold) => (mono ? 600 : code >= 32 && code <= 126 ? (bold ? HELVB : HELV)[code - 32] : WIDE[code] || 556);
+/** Text in WinAnsiEncoding, the standard PDF fonts' own: the superscripts and subscripts it lacks
+ *  become plain digits and signs, so b5⁺ and H₂O read in any viewer; anything else outside it is "?". */
+function winAnsi(t) {
+  let out = "";
+  for (const ch of t) {
+    const sp = "⁰¹²³⁴⁵⁶⁷⁸⁹".indexOf(ch), sb = "₀₁₂₃₄₅₆₇₈₉".indexOf(ch);
+    const c = "¹²³".includes(ch) ? ch : sp >= 0 ? String(sp) : sb >= 0 ? String(sb) : ch === "⁺" ? "+" : "⁻−–".includes(ch) ? "-" : ch;
+    const code = c.charCodeAt(0);
+    out += c.length === 1 && code >= 32 && code < 256 && (code < 127 || code >= 160) ? c : "?";
+  }
+  return out;
+}
+/** The figure as a one-page PDF drawn with the standard Helvetica and Courier, so nothing is embedded
+ *  and every mark stays a vector: lines, rectangles, circles, paths and text are what the plot holds. */
+function figurePdf(f) {
+  const {svg, W, H} = f, ops = [`1 0 0 -1 0 ${H} cm`], states = new Map();
+  const n = x => String(Math.round(x * 1000) / 1000);
+  const styleOf = el => Object.fromEntries((el.getAttribute("style") || "").split(";").filter(Boolean).map(s => [s.slice(0, s.indexOf(":")).trim(), s.slice(s.indexOf(":") + 1).trim()]));
+  const colourOf = v => { const m = /rgba?\(([^)]*)\)/.exec(v || ""); if (!m) return null; const c = m[1].split(",").map(parseFloat); return {r: c[0] / 255, g: c[1] / 255, b: c[2] / 255, a: c.length > 3 ? c[3] : 1}; };
+  const rgb = c => `${n(c.r)} ${n(c.g)} ${n(c.b)}`;
+  const alpha = (fa, sa) => {
+    if (fa >= 0.999 && sa >= 0.999) return "";
+    const key = `${n(fa)}|${n(sa)}`;
+    if (!states.has(key)) states.set(key, {name: `A${states.size}`, fa, sa});
+    return `/${states.get(key).name} gs `;
+  };
+  const upward = el => { let o = 1; for (let p = el.parentNode; p && p.getAttribute; p = p === svg ? null : p.parentNode) o *= parseFloat(styleOf(p).opacity || "1"); return o; };
+  const pathOps = d => {
+    const out = [], re = /([MmLlHhVvZz])([^MmLlHhVvZz]*)/g;
+    let m, x = 0, y = 0, sx = 0, sy = 0;
+    while ((m = re.exec(d))) {
+      const c = m[1], C = c.toUpperCase(), rel = c !== C, v = (m[2].match(/-?\d*\.?\d+(?:e[-+]?\d+)?/gi) || []).map(Number);
+      if (C === "Z") { out.push("h"); x = sx; y = sy; continue; }
+      for (let i = 0; i < v.length; i += C === "H" || C === "V" ? 1 : 2) {
+        if (C === "H") x = rel ? x + v[i] : v[i];
+        else if (C === "V") y = rel ? y + v[i] : v[i];
+        else { x = rel ? x + v[i] : v[i]; y = rel ? y + v[i + 1] : v[i + 1]; }
+        if (C === "M" && i === 0) { out.push(`${n(x)} ${n(y)} m`); sx = x; sy = y; } else out.push(`${n(x)} ${n(y)} l`);
+      }
+    }
+    return out.join(" ");
+  };
+  const shapeOf = (el, tag) => {
+    const a = k => parseFloat(el.getAttribute(k)) || 0;
+    if (tag === "line") return `${n(a("x1"))} ${n(a("y1"))} m ${n(a("x2"))} ${n(a("y2"))} l`;
+    const p = (u, v) => `${n(u)} ${n(v)}`;
+    if (tag === "rect") {
+      const x = a("x"), y = a("y"), w = a("width"), h = a("height"), r = Math.min(a("rx"), w / 2, h / 2), k = 0.5523 * r;
+      if (w <= 0 || h <= 0) return null;
+      if (r <= 0) return `${p(x, y)} ${p(w, h)} re`;
+      // Rounded corners, as the sequence ladder's boxes have, each a Bezier quarter.
+      return `${p(x + r, y)} m ${p(x + w - r, y)} l ${p(x + w - r + k, y)} ${p(x + w, y + r - k)} ${p(x + w, y + r)} c ` +
+        `${p(x + w, y + h - r)} l ${p(x + w, y + h - r + k)} ${p(x + w - r + k, y + h)} ${p(x + w - r, y + h)} c ` +
+        `${p(x + r, y + h)} l ${p(x + r - k, y + h)} ${p(x, y + h - r + k)} ${p(x, y + h - r)} c ` +
+        `${p(x, y + r)} l ${p(x, y + r - k)} ${p(x + r - k, y)} ${p(x + r, y)} c h`;
+    }
+    if (tag === "path") return pathOps(el.getAttribute("d") || "") || null;
+    if (tag !== "circle" || a("r") <= 0) return null;
+    // A circle as four Bezier quarters.
+    const x = a("cx"), y = a("cy"), r = a("r"), k = 0.5523 * r;
+    return `${p(x + r, y)} m ${p(x + r, y + k)} ${p(x + k, y + r)} ${p(x, y + r)} c ${p(x - k, y + r)} ${p(x - r, y + k)} ${p(x - r, y)} c ` +
+      `${p(x - r, y - k)} ${p(x - k, y - r)} ${p(x, y - r)} c ${p(x + k, y - r)} ${p(x + r, y - k)} ${p(x + r, y)} c h`;
+  };
+  const textOp = (el, st, fill, fa) => {
+    const raw = [...el.childNodes].filter(c => c.nodeType === 3).map(c => c.textContent).join("");
+    if (!raw.trim()) return;
+    const t = winAnsi(raw), size = parseFloat(st["font-size"]) || 10;
+    const mono = /mono|courier|menlo|consolas/i.test(st["font-family"] || ""), bold = parseInt(st["font-weight"], 10) >= 600;
+    let w = 0;
+    for (const ch of t) w += glyphW(ch.charCodeAt(0), mono, bold);
+    w *= size / 1000;
+    const anchor = el.getAttribute("text-anchor"), dx = anchor === "middle" ? -w / 2 : anchor === "end" ? -w : 0;
+    const x = parseFloat(el.getAttribute("x")) || 0, y = parseFloat(el.getAttribute("y")) || 0;
+    const rot = /rotate\(\s*([-\d.]+)[\s,]+([-\d.]+)[\s,]+([-\d.]+)\s*\)/.exec(el.getAttribute("transform") || "");
+    const ang = rot ? +rot[1] * Math.PI / 180 : 0, cx = rot ? +rot[2] : 0, cy = rot ? +rot[3] : 0, co = Math.cos(ang), si = Math.sin(ang);
+    // Glyphs stand upright against the page's flipped y, then turn with the one rotate(a cx cy) the plot uses.
+    const ex = co * (x + dx - cx) - si * (y - cy) + cx, ey = si * (x + dx - cx) + co * (y - cy) + cy;
+    const font = mono ? (bold ? "F4" : "F3") : bold ? "F2" : "F1";
+    ops.push(`q ${alpha(fa, 1)}${rgb(fill)} rg BT /${font} ${n(size)} Tf ${n(co)} ${n(si)} ${n(si)} ${n(-co)} ${n(ex)} ${n(ey)} Tm (${t.replace(/[\\()]/g, s => "\\" + s)}) Tj ET Q`);
+  };
+  for (const el of svg.querySelectorAll("*")) {
+    const tag = el.tagName.toLowerCase(), st = styleOf(el);
+    // display is not inherited, so a hidden group is found by looking upward; visibility is.
+    if (tag === "g" || tag === "title" || el.closest('[style*="display:none"]') || st.visibility === "hidden") continue;
+    const o = parseFloat(st.opacity || "1") * upward(el);
+    const fill = st.fill && st.fill !== "none" ? colourOf(st.fill) : null, stroke = st.stroke && st.stroke !== "none" ? colourOf(st.stroke) : null;
+    const fa = fill ? fill.a * parseFloat(st["fill-opacity"] || "1") * o : 0, sa = stroke ? stroke.a * parseFloat(st["stroke-opacity"] || "1") * o : 0;
+    if (tag === "text") { if (fill && fa > 0) textOp(el, st, fill, fa); continue; }
+    const geom = shapeOf(el, tag), doFill = !!fill && fa > 0 && tag !== "line", doStroke = !!stroke && sa > 0;
+    if (!geom || (!doFill && !doStroke)) continue;
+    let s = `q ${alpha(doFill ? fa : 1, doStroke ? sa : 1)}`;
+    if (doFill) s += `${rgb(fill)} rg `;
+    if (doStroke) {
+      const dash = (st["stroke-dasharray"] || "none") === "none" ? [] : st["stroke-dasharray"].split(/[\s,]+/).map(parseFloat).filter(Number.isFinite);
+      s += `${rgb(stroke)} RG ${n(parseFloat(st["stroke-width"]) || 1)} w [${dash.map(n).join(" ")}] 0 d ${({round: 1, square: 2})[st["stroke-linecap"]] || 0} J `;
+    }
+    ops.push(`${s}${geom} ${doFill && doStroke ? "B" : doFill ? "f" : "S"} Q`);
+  }
+  const content = ops.join("\n"), gsl = [...states.values()];
+  const fonts = [["F1", "Helvetica"], ["F2", "Helvetica-Bold"], ["F3", "Courier"], ["F4", "Courier-Bold"]];
+  const objs = ["<< /Type /Catalog /Pages 2 0 R >>", "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${W} ${H}] /Contents 4 0 R /Resources << /Font << ${fonts.map(([k], i) => `/${k} ${5 + i} 0 R`).join(" ")} >> ` +
+      `/ExtGState << ${gsl.map((g, i) => `/${g.name} ${9 + i} 0 R`).join(" ")} >> >> >>`,
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+    ...fonts.map(([, base]) => `<< /Type /Font /Subtype /Type1 /BaseFont /${base} /Encoding /WinAnsiEncoding >>`),
+    ...gsl.map(g => `<< /Type /ExtGState /ca ${n(g.fa)} /CA ${n(g.sa)} >>`)];
+  // Every character here is one byte, so string lengths are the byte offsets the cross-reference needs.
+  let pdf = "%PDF-1.4\n%\xe2\xe3\xcf\xd3\n";
+  const at = objs.map((o, i) => { const off = pdf.length; pdf += `${i + 1} 0 obj\n${o}\nendobj\n`; return off; });
+  const xref = pdf.length;
+  pdf += `xref\n0 ${objs.length + 1}\n0000000000 65535 f \n${at.map(o => `${String(o).padStart(10, "0")} 00000 n \n`).join("")}`;
+  pdf += `trailer\n<< /Size ${objs.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  return Uint8Array.from(pdf, ch => ch.charCodeAt(0));
+}
+/* ---------- end of the copy ---------- */
+
+// Arial's widths are Helvetica's, so the PDF's own table also wraps the text, and the SVG and PDF break alike.
+const textW = (t, size, bold) => { let w = 0; for (const ch of winAnsi(t)) w += glyphW(ch.charCodeAt(0), false, bold); return w * size / 1000; };
+function wrap(t, size, bold, max) {
+  const out = [];
+  let line = "";
+  for (const word of t.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && textW(next, size, bold) > max) { out.push(line); line = word; } else line = next;
+  }
+  if (line) out.push(line);
+  return out;
+}
+
+const QIDS = Object.keys(DATA.questions);
+const kindOf = id => (id === "start" ? "start" : DATA.questions[id] ? "question" : "verdict");
+const EDGES = [{id: "start-q1", from: "start", to: "q1", ans: null},
+  ...QIDS.flatMap(q => ["yes", "no"].map(ans => ({id: `${q}-${ans}`, from: q, to: DATA.questions[q][ans], ans})))];
+
+// Two hand layouts of one graph. wide is the export at 170 mm and the desktop screen; narrow keeps 9 pt text near
+// 10 px on a 375 px phone, which no scaling of wide can do. The questions sit in four layers by the graph's longest
+// path from q1, the verdicts in a fifth (two rows on a phone, three verdicts each), and every row is one gap below
+// the last, so the layers are evenly spaced. A question row gives all its boxes one width, qw, and the height of its
+// tallest; every verdict box takes the size of the largest verdict. x is each box's centre.
+// An edge's route runs only down and across: x lists the x of each vertical run, ch the y of each horizontal run
+// between them, as [row, f], f of the gap below that row. lab puts its Yes or No beside a vertical run: side l or r,
+// seg 0 for the run leaving the box (the default) or "last" for the one entering the next.
+const LAYOUTS = {
+  wide: {W: STYLE.widthPt, pillW: 72, top: 8, gap: 40, bottom: 8, rows: [
+    {ids: [["start", 241]]},
+    {qw: 110, ids: [["q1", 241]]},
+    {qw: 110, ids: [["q2", 130], ["q7", 352]]},
+    {qw: 110, ids: [["q3", 62], ["q5", 241], ["q8", 420]]},
+    {qw: 110, ids: [["q4", 140], ["q6", 270]]},
+    {ids: [["excellent", 40], ["good", 120], ["contam", 200], ["close", 280], ["fp", 360], ["lowinfo", 440]]}],
+    route: {
+      "start-q1": {},
+      "q1-yes": {lab: {side: "l"}}, "q1-no": {lab: {side: "r"}},
+      "q2-no": {lab: {side: "l"}}, "q2-yes": {lab: {side: "r"}},
+      "q7-no": {lab: {side: "l"}}, "q7-yes": {lab: {side: "r"}},
+      "q3-yes": {lab: {side: "l"}}, "q3-no": {lab: {side: "r"}},
+      // Round the right of q6, so it crosses nothing on its way to Close, and enter Close on its right anchor below
+      // the lane q6's Yes takes to the left one.
+      "q5-yes": {ch: [[3, 0.5]], lab: {side: "l"}},
+      "q5-no": {x: [335], ch: [[3, 0.3], [4, 0.75]], lab: {side: "l"}},
+      "q8-yes": {lab: {side: "l"}}, "q8-no": {lab: {side: "r"}},
+      "q4-no": {lab: {side: "l"}}, "q4-yes": {lab: {side: "r"}},
+      "q6-no": {lab: {side: "l"}}, "q6-yes": {ch: [[4, 0.35]], lab: {side: "r"}},
+    }},
+  narrow: {W: 300, pillW: 72, top: 8, gap: 34, bottom: 8, rows: [
+    {ids: [["start", 150]]},
+    {qw: 140, ids: [["q1", 150]]},
+    {qw: 130, ids: [["q2", 80], ["q7", 222]]},
+    {qw: 90, ids: [["q3", 50], ["q5", 150], ["q8", 250]]},
+    {qw: 96, ids: [["q4", 88], ["q6", 202]]},
+    {ids: [["excellent", 46], ["good", 146], ["contam", 246]]},
+    {ids: [["close", 46], ["fp", 146], ["lowinfo", 246]]}],
+    route: {
+      "start-q1": {},
+      "q1-yes": {lab: {side: "l"}}, "q1-no": {lab: {side: "r"}},
+      "q2-no": {lab: {side: "l"}},
+      // Down the left of q5 before it jogs to Extra peaks' right anchor.
+      "q2-yes": {x: [100], ch: [[2, 0.5], [3, 0.5]], lab: {side: "r"}},
+      "q7-no": {lab: {side: "l"}}, "q7-yes": {lab: {side: "r"}},
+      // Down the left of Extra peaks before it jogs to Excellent's middle.
+      "q3-yes": {ch: [[4, 0.3]], lab: {side: "l"}}, "q3-no": {lab: {side: "r"}},
+      "q5-yes": {lab: {side: "r"}},
+      // Close sits under Excellent: both edges to it come down between Good and Contamination, the inner one on the
+      // upper lane and further left, so the two never cross each other. q5's No first steps right, clear of q4.
+      "q5-no": {x: [150, 189], ch: [[3, 0.45], [4, 0.9], [5, 0.15]], lab: {side: "l"}},
+      "q6-yes": {x: [200], ch: [[4, 0.75], [5, 0.3]], lab: {side: "r"}},
+      // q6's No steps right on the highest lane, above q4's Yes, which it would otherwise cross into Contamination.
+      "q6-no": {ch: [[4, 0.15]], lab: {side: "r", seg: "last"}},
+      // q4's Yes takes the higher lane, so its No, also heading right, passes under nothing.
+      "q4-no": {ch: [[4, 0.6]], lab: {side: "l"}}, "q4-yes": {ch: [[4, 0.5]], lab: {side: "l", seg: "last"}},
+      // Both of q8's lines step right of q6 and Contamination, the No on the higher lane so the two never cross.
+      "q8-yes": {x: [285], ch: [[3, 0.6], [5, 0.45]], lab: {side: "l"}},
+      "q8-no": {x: [293], ch: [[3, 0.3], [5, 0.6]], lab: {side: "r", seg: "last"}},
+    }},
+};
+
+function nodeLines(id, qw, pillW) {
+  const S = STYLE, k = kindOf(id), line = (t, kind, bold) => ({t, size: S.size[kind], lead: S.lead[kind], bold});
+  if (k === "start") return [line(START.title, "title", true), line(START.sub, "text", false)];
+  if (k === "question") {
+    const q = DATA.questions[id], inner = qw - 2 * S.padX;
+    return [...wrap(q.name, S.size.node, true, inner).map(t => line(t, "node", true)),
+      ...wrap(q.text, S.size.text, false, inner).map(t => line(t, "text", false))];
+  }
+  return wrap(DATA.outcomes[id], S.size.verdict, true, pillW - 2 * S.pillPad).map(t => line(t, "verdict", true));
+}
+
+/** Every box, sized by its row (questions) or by the largest verdict, and each row's top and bottom. */
+function placeNodes(L) {
+  const S = STYLE, N = {}, rows = [], textH = lines => 2 * S.padY + lines.reduce((s, l) => s + l.lead, 0);
+  const pillH = Math.max(...Object.keys(DATA.outcomes).map(v => textH(nodeLines(v, 0, L.pillW))));
+  let y = L.top;
+  for (const row of L.rows) {
+    const boxes = row.ids.map(([id, x]) => {
+      const k = kindOf(id), lines = nodeLines(id, row.qw, L.pillW);
+      const w = k === "question" ? row.qw : k === "verdict" ? L.pillW
+        : Math.max(...lines.map(l => textW(l.t, l.size, l.bold))) + 2 * S.padX + 10;
+      return {id, k, x, y, w, lines, h: k === "verdict" ? pillH : textH(lines)};
+    });
+    const h = Math.max(...boxes.map(b => b.h));
+    for (const b of boxes) N[b.id] = {...b, h};
+    rows.push({ids: row.ids.map(([id]) => id), top: y, bottom: y + h});
+    y += h + L.gap;
+  }
+  return {N, rows, H: y - L.gap + L.bottom};
+}
+
+// Where lines meet a box, Rytis's rule of 2026-10-30: one line on a side meets its middle, two meet it at a quarter
+// and three quarters of the width. Of two lines leaving, the one heading left takes the quarter: heading is its first
+// inner vertical run, or its target's centre when it has none. Of two entering, the one arriving from the left takes
+// it: arriving is its last inner vertical run, or where it left its source. So a pair never cross at the box, and a
+// line that rounds a box to come in from the right takes the right anchor.
+const ANCHOR_AT = Object.freeze({1: [0.5], 2: [0.25, 0.75]});
+/** Each edge's x where it leaves its source's bottom (out) and enters its target's top (in). */
+function anchors(N, L) {
+  const out = {}, inn = {}, inner = e => (L.route[e.id] || {}).x || [];
+  const place = (box, edges, key, into) => {
+    if (!edges.length) return;
+    if (!ANCHOR_AT[edges.length]) throw new Error(`${edges.length} lines on one side of ${box.id}`);
+    [...edges].sort((a, b) => key(a) - key(b))
+      .forEach((e, i) => { into[e.id] = box.x - box.w / 2 + ANCHOR_AT[edges.length][i] * box.w; });
+  };
+  const boxes = Object.values(N);
+  for (const box of boxes) place(box, EDGES.filter(e => e.from === box.id), e => inner(e)[0] ?? N[e.to].x, out);
+  for (const box of boxes) place(box, EDGES.filter(e => e.to === box.id), e => inner(e).at(-1) ?? out[e.id], inn);
+  return {out, in: inn};
+}
+
+/** An edge's corners, from its anchor on the source's bottom to its anchor on the target's top, every run vertical
+ *  or horizontal. A route's x lists only the vertical runs between its channels; the first and last are the anchors.
+ *  An edge whose anchors differ and that names no channel jogs across halfway down the gap below its source. */
+function edgePoints(e, N, L, rows, at) {
+  const r = L.route[e.id] || {}, xo = at.out[e.id], xi = at.in[e.id];
+  const srcRow = rows.findIndex(row => row.ids.includes(e.from));
+  const ch = r.ch || (Math.abs(xo - xi) > 1e-9 ? [[srcRow, 0.5]] : []);
+  const xs = [xo, ...(r.x || []), xi], pts = [[xo, N[e.from].y + N[e.from].h]];
+  if (ch.length && xs.length !== ch.length + 1) throw new Error(`route ${e.id}: ${xs.length - 2} inner x for ${ch.length} channels`);
+  ch.forEach(([row, f], i) => {
+    const y = rows[row].bottom + L.gap * f;
+    pts.push([xs[i], y], [xs[i + 1], y]);
+  });
+  pts.push([xs[xs.length - 1], N[e.to].y]);
+  return pts;
+}
+
+const fmt = v => String(Math.round(v * 100) / 100);
+const dOf = pts => pts.map(([x, y], i) => `${i ? "L" : "M"}${fmt(x)} ${fmt(y)}`).join(" ");
+
+/** The chart as primitives: rect, path and text, each with a role for its colour and a group for its node or edge.
+ *  The screen draws them with classes it can animate; the SVG and PDF exports write them with fixed colours. */
+function buildChart(kind, {citation = false} = {}) {
+  const L = LAYOUTS[kind], S = STYLE, {N, rows} = placeNodes(L), prims = [], geo = {}, lines = {}, labels = {}, at = anchors(N, L);
+  let {H} = placeNodes(L);
+  for (const e of EDGES) {
+    const pts = edgePoints(e, N, L, rows, at), role = e.ans || "ink", g = `edge:${e.id}`;
+    lines[e.id] = pts;
+    const [ax, ay] = pts[pts.length - 2], [bx, by] = pts[pts.length - 1], len = Math.hypot(bx - ax, by - ay);
+    const ux = (bx - ax) / len, uy = (by - ay) / len, A = S.arrow, base = [bx - ux * A, by - uy * A];
+    const line = [...pts.slice(0, -1), base];
+    geo[e.id] = dOf(line);
+    prims.push({t: "path", a: {d: geo[e.id]}, stroke: role, sw: S.line, g});
+    prims.push({t: "path", a: {d: `${dOf([[bx, by], [base[0] - uy * A * 0.55, base[1] + ux * A * 0.55], [base[0] + uy * A * 0.55, base[1] - ux * A * 0.55]])} Z`}, fill: role, g});
+    if (e.ans) {
+      // Beside a vertical run: 11 pt down the run leaving the box, or halfway down the run entering the next.
+      const o = L.route[e.id].lab, last = o.seg === "last", [px, py] = pts[last ? pts.length - 2 : 0];
+      const ly = last ? (py + pts[pts.length - 1][1]) / 2 : py + 11, lx = px + (o.side === "l" ? -4 : 4);
+      const text = e.ans === "yes" ? "Yes" : "No";
+      labels[e.id] = {x: lx, y: ly, w: textW(text, S.size.label, true), side: o.side};
+      prims.push({t: "text", a: {x: fmt(lx), y: fmt(ly + 3.2), "text-anchor": o.side === "l" ? "end" : "start"},
+        size: S.size.label, bold: true, fill: "ink", text, g: `elabel:${e.id}`});
+    }
+  }
+  for (const n of Object.values(N)) {
+    const g = `node:${n.id}`, x0 = n.x - n.w / 2;
+    const rect = {t: "rect", a: {x: fmt(x0), y: fmt(n.y), width: fmt(n.w), height: fmt(n.h),
+      rx: n.k === "verdict" ? S.pillRadius : S.radius}, stroke: "ink", sw: S.box, g};
+    if (n.k === "verdict") Object.assign(rect, {fill: n.id, cls: "pill"});
+    else rect.cls = n.k === "question" ? "qbox" : "sbox";
+    prims.push(rect);
+    // Text centred in its box, since a box takes its row's tallest height.
+    let y = n.y + (n.h - n.lines.reduce((s, l) => s + l.lead, 0)) / 2;
+    for (const l of n.lines) {
+      prims.push({t: "text", a: {x: fmt(n.x), y: fmt(y + l.lead / 2 + l.size * 0.36), "text-anchor": "middle"},
+        size: l.size, bold: l.bold, fill: "ink", text: l.t, g});
+      y += l.lead;
+    }
+  }
+  if (citation) {
+    // The exports' caption line, under the chart: on screen the page's own caption carries it, with the DOI a link.
+    let y = H + 4;
+    for (const t of wrap(`${CITATION.text} ${CITATION.doi}`, S.size.caption, false, L.W - 16)) {
+      prims.push({t: "text", a: {x: 8, y: fmt(y + S.lead.caption * 0.75)}, size: S.size.caption, bold: false, fill: "ink", text: t, g: "caption:citation"});
+      y += S.lead.caption;
+    }
+    H = y + 6;
+  }
+  // Labels last, so a line never runs over a Yes or a No.
+  prims.sort((a, b) => (a.g.startsWith("elabel") ? 1 : 0) - (b.g.startsWith("elabel") ? 1 : 0));
+  return {kind, W: L.W, H, N, rows, geo, lines, labels, prims};
+}
+
+// The glow on every stream, its region in user space over the whole stage. In the default objectBoundingBox units the
+// region is a fraction of the path's bounding box, and a straight vertical edge's box is 0 wide, so the browser drew
+// no stream at all on such an edge: 13 of the 17 once the layout became orthogonal, and only the bent ones showed.
+const GLOW_LINE = Object.freeze({filterUnits: "userSpaceOnUse", x: "-5%", y: "-5%", width: "110%", height: "110%"});
+const pathLen = d => {
+  const v = d.match(/-?\d+(?:\.\d+)?/g).map(Number);
+  let s = 0;
+  for (let i = 2; i < v.length; i += 2) s += Math.hypot(v[i] - v[i - 2], v[i + 1] - v[i - 1]);
+  return s;
+};
+/** The stream a step sends along its edge in one chart: the edge's whole drawn line, every run of it, and its length. */
+function edgeStream(chart, st) {
+  return st.edge ? {edge: st.edge, d: chart.geo[st.edge], len: pathLen(chart.geo[st.edge]), colour: st.colour} : null;
+}
+
+const esc = s => String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const rgbOf = hex => `rgb(${parseInt(hex.slice(1, 3), 16)}, ${parseInt(hex.slice(3, 5), 16)}, ${parseInt(hex.slice(5, 7), 16)})`;
+/** A primitive's fixed style, as the export writes it and as figurePdf reads it back. */
+function exportStyle(p) {
+  const st = [`fill:${p.fill ? rgbOf(ROLE[p.fill]) : "none"}`, `stroke:${p.stroke ? rgbOf(ROLE[p.stroke]) : "none"}`];
+  if (p.stroke) st.push(`stroke-width:${p.sw}`);
+  if (p.t === "text") st.push(`font-family:${STYLE.font}`, `font-size:${p.size}px`, `font-weight:${p.bold ? 700 : 400}`);
+  return st.join(";");
+}
+const attrs = a => Object.entries(a).map(([k, v]) => ` ${k}="${esc(v)}"`).join("");
+const primXml = (p, extra) => `<${p.t}${attrs(p.a)}${extra}${p.t === "text" ? `>${esc(p.text)}</text>` : "/>"}`;
+const exportId = g => {
+  const [k, id] = g.split(":");
+  return k === "node" ? `${kindOf(id)}-${id}` : k === "caption" ? id : `${k === "elabel" ? "label" : "edge"}-${id}`;
+};
+
+/** The full flowchart as a standalone SVG, 170 mm wide, in points: no classes, no state, nothing animated. */
+function exportSvg() {
+  const c = buildChart("wide", {citation: true}), groups = new Map();
+  for (const p of c.prims) { if (!groups.has(p.g)) groups.set(p.g, []); groups.get(p.g).push(p); }
+  const hMm = c.H / 72 * 25.4;
+  const body = [...groups].map(([g, ps]) => `  <g id="${exportId(g)}">${ps.map(p => primXml(p, ` style="${esc(exportStyle(p))}"`)).join("")}</g>`).join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" width="${STYLE.widthMm}mm" height="${fmt(hMm)}mm" ` +
+    `viewBox="0 0 ${fmt(c.W)} ${fmt(c.H)}">\n  <title>PSM Spectrum Validator flowchart</title>\n${body}\n</svg>\n`;
+}
+/** The same chart as a vector PDF, through the validator's figurePdf: the primitives handed over as the elements it reads. */
+function exportPdf() {
+  const c = buildChart("wide", {citation: true}), svg = {getAttribute: () => null};
+  const els = c.prims.map(p => ({tagName: p.t, parentNode: svg, closest: () => null,
+    getAttribute: k => (k === "style" ? exportStyle(p) : p.a[k] ?? null),
+    childNodes: p.t === "text" ? [{nodeType: 3, textContent: p.text}] : []}));
+  svg.querySelectorAll = () => els;
+  return figurePdf({svg, W: fmt(c.W), H: fmt(c.H)});
+}
+
+const lum = hex => [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+  .map(v => (v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)).reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0);
+const contrast = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+/** Every text colour the page and the exports draw, against what it is drawn on. */
+function contrastPairs() {
+  const pairs = [["export: ink text on white", ROLE.ink, "#FFFFFF"]];
+  for (const v of Object.keys(DATA.outcomes)) pairs.push([`verdict ${v}: ink text on its fill`, ROLE.ink, ROLE[v]]);
+  for (const [name, t] of Object.entries(THEME)) {
+    pairs.push([`${name}: ink on page`, t.ink, t.bg], [`${name}: muted on page`, t.muted, t.bg],
+      [`${name}: ink on card`, t.ink, t.card], [`${name}: muted on card`, t.muted, t.card], [`${name}: button text`, t.bg, t.ink]);
+  }
+  return pairs.map(([what, fg, bg]) => ({what, fg, bg, ratio: Math.round(contrast(fg, bg) * 100) / 100}));
+}
+
+/* ---------- the inputs: what the files look like ---------- */
+const CARDS = [
+  {id: "psm", name: "psm.tsv", tag: "FragPipe results", lines: [
+    "Spectrum            Peptide     Charge", "run1.12345.12345.2  LVNELTEFAK  2",
+    "run1.20877.20877.2  AGFAGDDAPR  2", "... Hyperscore, Assigned Modifications"]},
+  {id: "mzml", name: "run1_uncalibrated.mzML", tag: "FragPipe spectra", lines: [
+    "<spectrum index=\"12344\"", "    id=\"... scan=12345\">", "  <cvParam name=\"ms level\" value=\"2\"/>",
+    "  <binaryDataArray ...>"]},
+  {id: "script", name: "scripts/python/export_mgf.py", tag: "writes both MGFs", lines: [
+    "export_mgf.py --workdir results/<run> \\", "  --match 'label=novel\\b' --out spectra.mgf",
+    "export_mgf.py --workdir results/<run> \\", "  --match 'label=housekeeping_sanity\\b' \\",
+    "  --per-protein 50 --out controls.mgf"]},
+  {id: "spectra", name: "spectra.mgf", tag: "the PSMs to judge", lines: [
+    "BEGIN IONS", "TITLE=run1.12345.12345.2", "PEPMASS=603.32426", "CHARGE=2+", "SEQ=[+42.0106]-LVNELTEFAK",
+    "147.11280 18250", "156.10194 9310", "...", "END IONS"]},
+  {id: "controls", name: "controls.mgf", tag: "optional: trusted PSMs", lines: [
+    "BEGIN IONS", "TITLE=run1.20877.20877.2", "PEPMASS=488.72776", "CHARGE=2+", "SEQ=AGFAGDDAPR",
+    "HYPERSCORE=38.6", "175.11895 22400", "...", "END IONS"]},
+];
+
+/* ---------- pacing: each step stays for the words it shows ---------- */
+// Rytis chose a base of 100 words per minute; an adult reads silent non-fiction at about 238. A press moves the base
+// by 30, and 100 reaches both 10 and 400 exactly. Each stage multiplies the base by its own factor, also Rytis's
+// choice, set on 2026-10-30 so the default reads the file cards at 230 words per minute and the questions and
+// verdicts at 160; the stream's travel along an edge runs at 0.8, five times slower than the 4 it had, 1.5 s at the
+// default. floorMs is the 450 ms fade every card, node and label takes, so no step cuts one short. A
+// motion, the stream's travel or the validator's rise, takes as long as reading motionWords words at its stage's
+// pace, and never under motionFloorMs, so a stream is always seen moving.
+// A verdict stays as long as verdictWords words take to read at its stage's pace, Rytis asked on 2026-10-30, as a
+// one-word verdict at the floor went by before it was seen; it still follows the speed buttons. A Yes or No label
+// likewise holds edgeWords words' reading time, as Rytis asked the same day. After the verdict's own time the run's
+// whole lit path holds pathHoldMs before the next run starts: fixed, never scaled by the speed buttons, Rytis decided.
+const PACE = Object.freeze({wpm: 100, change: 30, min: 10, max: 400, floorMs: 450, motionWords: 2, motionFloorMs: 100, verdictWords: 6, edgeWords: 3,
+  pathHoldMs: 3000, factor: Object.freeze({inputs: 2.3, rest: 1.6, travel: 0.8})});
+/** Words in a text: whitespace-separated tokens holding a letter or a digit. A code token such as
+ *  run1.12345.12345.2, --match or PEPMASS=603.32426 is one word; a bare "...", "\" or "<" is none. */
+const countWords = t => String(t).split(/\s+/).filter(w => /[\p{L}\p{N}]/u.test(w)).length;
+const plainText = h => String(h).replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">")
+  .replace(/&quot;/g, '"').replace(/&amp;/g, "&");
+const readMs = (words, wpm) => words * 60000 / wpm;
+const motionMs = wpm => Math.max(PACE.motionFloorMs, readMs(PACE.motionWords, wpm));
+/** How long a step stays at base wpm: its new words read at its stage's pace, never shorter than its motion or the fade. */
+const stepMs = (st, wpm) => (st.hold ? PACE.pathHoldMs : Math.max(PACE.floorMs, readMs(st.verdict ? Math.max(st.words, PACE.verdictWords) : st.edge ? Math.max(st.words, PACE.edgeWords) : st.words, wpm * PACE.factor[st.read]),
+  st.motion ? motionMs(wpm * PACE.factor[st.motion]) : 0));
+const nextWpm = (wpm, dir) => Math.min(PACE.max, Math.max(PACE.min, wpm + dir * PACE.change));
+const paceButtons = wpm => ({slower: wpm > PACE.min, faster: wpm < PACE.max});
+const speedLabel = wpm => `${wpm} words per minute`;
+const FINAL_ANNOUNCE = `The full flowchart: ${Object.keys(DATA.questions).length} questions, ` +
+  `${Object.keys(DATA.outcomes).length} verdicts.`;
+
+/** The animation as steps, each with its own text and that text's word count: the card that appears, the box the
+ *  stream reaches, the Yes or No it takes. Nothing already on screen counts again, so a box reached in two runs
+ *  stays the same time in both and the pace never drifts as the flow runs on. The page shows no caption; say is a
+ *  short announcement for screen readers only, and is not counted. */
+function buildPlan() {
+  const plan = [];
+  const step = (st, own = [], say) => {
+    if (say !== undefined) st.say = say;
+    plan.push({read: "rest", ...st, texts: own, words: own.reduce((n, t) => n + countWords(t), 0)});
+  };
+  const card = id => { const c = CARDS.find(x => x.id === id); return [c.name, c.tag, ...c.lines].join("\n"); };
+  const question = id => `${DATA.questions[id].name} ${DATA.questions[id].text}`;
+  step({card: "psm", read: "inputs"}, [card("psm")], "The input files.");
+  step({card: "mzml", read: "inputs"}, [card("mzml")]);
+  step({card: "script", read: "inputs", flow: ["psm-script", "mzml-script"], motion: "inputs"}, [card("script")]);
+  step({card: "spectra", read: "inputs"}, [card("spectra")]);
+  step({card: "controls", read: "inputs", flow: ["script-spectra", "script-controls"], motion: "inputs"}, [card("controls")]);
+  step({node: "start", flow: ["spectra-start", "controls-start"], motion: "rest"}, [`${START.title} ${START.sub}`],
+    "The files flow into the validator.");
+  step({rise: true, motion: "rest"});
+  DATA.runs.forEach((run, k) => {
+    step({clear: true, edge: "start-q1", colour: "stream", motion: "travel"});
+    step({node: "q1"}, [question("q1")]);
+    for (const [q, ans] of run.path) {
+      const to = DATA.questions[q][ans];
+      step({edge: `${q}-${ans}`, colour: ans, motion: "travel"}, [ans === "yes" ? "Yes" : "No"]);
+      if (DATA.questions[to]) step({node: to}, [question(to)]);
+      else step({verdict: to}, [DATA.outcomes[to]], `Run ${k + 1} of ${DATA.runs.length}, verdict ${DATA.outcomes[to]}.`);
+    }
+    step({hold: true});
+  });
+  step({final: true}, [], FINAL_ANNOUNCE);
+  return plan;
+}
+const PLAN = Object.freeze(buildPlan());
+
+/** The path a verdict's run took: every edge from the validator box to the verdict, and every box it lit.
+ *  Two verdicts have a second route in the full graph that no run takes: Good but some contamination also through
+ *  q1 No, q7 No, q5 Yes, q6 No, and Close but false positive through q1 No, q7 No, q5 Yes, q6 Yes. A pressed verdict
+ *  shows its run's route, as Rytis asked on 2026-10-30. */
+function runPath(verdict) {
+  const run = DATA.runs.find(r => r.verdict === verdict);
+  return {edges: ["start-q1", ...run.path.map(([q, a]) => `${q}-${a}`)], nodes: ["start", ...run.path.map(([q]) => q), verdict]};
+}
+/** The verdict shown after a press on id: pressing the shown one again clears it. */
+const nextPick = (picked, id) => (picked === id ? null : id);
+/** The keys that press a button, as a native button takes them. */
+const activates = key => key === "Enter" || key === " " || key === "Spacebar";
+
+globalThis.FlowCore = {DATA, START, CITATION, STYLE, ROLE, THEME, LAYOUTS, EDGES, buildChart, GLOW_LINE, edgeStream, exportSvg, exportPdf, contrastPairs, textW, esc, fmt, dOf,
+  CARDS, PACE, PLAN, runPath, nextPick, activates, countWords, stepMs, motionMs, nextWpm, paceButtons, speedLabel};
+</script>
+
+<script id="flow-ui">
+"use strict";
+// flow-core's top-level names are in scope here: classic scripts share one global lexical scope.
+const $ = id => document.getElementById(id);
+const stage = $("stage"), announce = $("announce");
+
+// The screen's colours, from THEME and ROLE: light by default, dark under the system setting unless data-theme says light.
+(function themeCss() {
+  const vars = t => Object.entries(t).map(([k, v]) => `--${k}:${v};`).join("");
+  const roles = Object.entries(ROLE).map(([k, v]) => `--r-${k}:${v};`).join("");
+  const css = `:root{${vars(THEME.light)}${roles}}` +
+    `@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){${vars(THEME.dark)}}}` +
+    `:root[data-theme="dark"]{${vars(THEME.dark)}}` +
+    Object.keys(ROLE).map(k => `#stage .f-${k}{fill:var(--r-${k})}#stage .s-${k}{stroke:var(--r-${k})}`).join("") +
+    // Ink follows the theme on screen; the exports keep it black.
+    "#stage .f-ink{fill:var(--ink)}#stage .s-ink{stroke:var(--ink)}#stage .verdict text.f-ink{fill:#000}" +
+    "#stage .f-card{fill:var(--card)}#stage .s-card{stroke:var(--cardline)}#stage .f-muted{fill:var(--muted)}";
+  document.head.append(Object.assign(document.createElement("style"), {textContent: css}));
+})();
+
+/* ---------- the inputs: where the cards sit ---------- */
+// Where each card sits, per layout: [x, width, row]. Rows stack; cards in one row share a top.
+const CARD_AT = {
+  wide: {psm: [14, 220, 0], mzml: [248, 220, 0], script: [91, 300, 1], spectra: [14, 220, 2], controls: [248, 220, 2]},
+  narrow: {psm: [14, 272, 0], mzml: [14, 272, 1], script: [14, 272, 2], spectra: [14, 272, 3], controls: [14, 272, 4]},
+};
+// The streams between them; via sends one down a side gutter past the card between its ends.
+const STREAMS = {
+  wide: [["psm", "script"], ["mzml", "script"], ["script", "spectra"], ["script", "controls"], ["spectra", "start"], ["controls", "start"]],
+  narrow: [["psm", "script", "left"], ["mzml", "script"], ["script", "spectra"], ["script", "controls", "right"],
+    ["spectra", "start", "left"], ["controls", "start"]],
+};
+const CARD_GAP = {wide: 26, narrow: 14};
+
+function inputsScene(kind, W) {
+  const S = STYLE, at = CARD_AT[kind], box = {}, rows = [];
+  for (const c of CARDS) {
+    const [x, w, r] = at[c.id], h = 26 + c.lines.length * S.lead.mono + 6;
+    rows[r] = Math.max(rows[r] || 0, h);
+    box[c.id] = {x, w, r, h};
+  }
+  let y = 6;
+  const rowY = rows.map(h => { const t = y; y += h + CARD_GAP[kind]; return t; });
+  let svg = "";
+  for (const c of CARDS) {
+    const b = box[c.id];
+    b.y = rowY[b.r];
+    const tagX = b.x + b.w - 8, nameW = textW(c.name, S.size.node, true);
+    // A tag that would run into the name drops to the line below it.
+    const tagOwnLine = 8 + nameW + 10 + textW(c.tag, S.size.tag, false) > b.w - 8;
+    svg += `<g class="card" data-card="${c.id}"><rect class="f-card s-card" x="${fmt(b.x)}" y="${fmt(b.y)}" width="${b.w}" height="${fmt(b.h)}" rx="5" stroke-width="1"/>` +
+      `<text class="f-ink" x="${b.x + 8}" y="${fmt(b.y + 16)}" font-size="${S.size.node}" font-weight="700">${esc(c.name)}</text>` +
+      `<text class="f-muted" x="${tagOwnLine ? b.x + 8 : tagX}" y="${fmt(tagOwnLine ? b.y + 16 : b.y + 16)}" font-size="${S.size.tag}" text-anchor="${tagOwnLine ? "start" : "end"}"` +
+      `${tagOwnLine ? ` dx="${fmt(nameW + 8)}"` : ""}>${esc(c.tag)}</text>` +
+      c.lines.map((l, i) => `<text class="f-ink mono" x="${b.x + 8}" y="${fmt(b.y + 26 + (i + 0.75) * S.lead.mono)}" font-size="${S.size.mono}" xml:space="preserve">${esc(l)}</text>`).join("") +
+      "</g>";
+  }
+  return {svg, box, H: y - CARD_GAP[kind] + 8, startY: y};
+}
+
+function streamD(kind, a, b, via, W) {
+  if (via) {
+    const gx = via === "left" ? 6 : W - 6, side = via === "left" ? a.x : a.x + a.w, tside = via === "left" ? b.x : b.x + b.w;
+    const y1 = a.y + a.h / 2, y2 = b.y + Math.min(b.h / 2, 18), r = 6, dir = via === "left" ? -1 : 1;
+    return `M${fmt(side)} ${fmt(y1)} L${fmt(gx - dir * r)} ${fmt(y1)} Q${fmt(gx)} ${fmt(y1)} ${fmt(gx)} ${fmt(y1 + r)} ` +
+      `L${fmt(gx)} ${fmt(y2 - r)} Q${fmt(gx)} ${fmt(y2)} ${fmt(gx - dir * r)} ${fmt(y2)} L${fmt(tside)} ${fmt(y2)}`;
+  }
+  const x1 = a.x + a.w / 2, y1 = a.y + a.h, x2 = b.x + b.w / 2, y2 = b.y, dy = (y2 - y1) / 2;
+  return `M${fmt(x1)} ${fmt(y1)} C${fmt(x1)} ${fmt(y1 + dy)} ${fmt(x2)} ${fmt(y2 - dy)} ${fmt(x2)} ${fmt(y2)}`;
+}
+
+/* ---------- drawing the stage ---------- */
+let scene = null;  // {kind, chart, inputs, startShift}
+function primMarkup(p) {
+  const cls = [p.fill ? `f-${p.fill}` : "", p.stroke ? `s-${p.stroke}` : "", p.cls || ""].filter(Boolean).join(" ");
+  const extra = ` class="${cls}"${p.fill ? "" : ' fill="none"'}${p.stroke ? ` stroke-width="${p.sw}"` : ""}` +
+    (p.t === "text" ? ` font-size="${p.size}" font-weight="${p.bold ? 700 : 400}"` : "");
+  return `<${p.t}${Object.entries(p.a).map(([k, v]) => ` ${k}="${esc(v)}"`).join("")}${extra}${p.t === "text" ? `>${esc(p.text)}</text>` : "/>"}`;
+}
+function render(kind) {
+  const chart = buildChart(kind), W = chart.W, groups = new Map();
+  for (const p of chart.prims) { if (!groups.has(p.g)) groups.set(p.g, []); groups.get(p.g).push(p); }
+  const inputs = inputsScene(kind, W), H = Math.max(chart.H, inputs.startY + chart.N.start.h + 8);
+  const start = chart.N.start, startShift = inputs.startY - start.y;
+  const box = {...inputs.box, start: {x: start.x - start.w / 2, y: inputs.startY, w: start.w, h: start.h}};
+  const streams = STREAMS[kind].map(([a, b, via]) => ({id: `${a}-${b}`, d: streamD(kind, box[a], box[b], via, W), optional: a === "controls"}));
+  const chartSvg = [...groups].map(([g, ps]) => {
+    const [k, id] = g.split(":"), nk = k === "node" ? ` ${chart.N[id].k}` : "";
+    return `<g class="${k}${nk}" data-id="${id}"${k === "node" && chart.N[id].k === "verdict" ? ` style="color:${ROLE[id]}"` : ""}>${ps.map(primMarkup).join("")}</g>`;
+  }).join("");
+  stage.setAttribute("viewBox", `0 0 ${fmt(W)} ${fmt(H)}`);
+  stage.innerHTML = `<title id="stageTitle">The PSM Spectrum Validator flowchart</title>` +
+    `<defs><filter id="glow" x="-30%" y="-60%" width="160%" height="220%"><feGaussianBlur stdDeviation="3.2" result="b"/>` +
+    `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>` +
+    `<filter id="glow-ink" x="-20%" y="-30%" width="140%" height="160%"><feDropShadow dx="0" dy="0" stdDeviation="2.4" flood-color="${THEME.light.stream}"/></filter>` +
+    `<filter id="glow-line"${attrs(GLOW_LINE)}><feGaussianBlur stdDeviation="2" result="b"/>` +
+    `<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>` +
+    `<g class="inputs">${inputs.svg}<g class="stream" id="inStreams"></g></g>` +
+    `<g class="chart">${chartSvg}</g><g class="stream" id="runStreams"></g>`;
+  scene = {kind, chart, streams, startShift};
+}
+const nodeEl = id => stage.querySelector(`.node[data-id="${id}"]`);
+const edgeEls = id => stage.querySelectorAll(`.edge[data-id="${id}"], .elabel[data-id="${id}"]`);
+
+/* ---------- motion ---------- */
+let token = 0;
+const ABORT = Symbol("abort");
+const reduceMq = matchMedia("(prefers-reduced-motion: reduce)");
+const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+function sleeper(my) {
+  return ms => new Promise((res, rej) => setTimeout(() => (my === token ? res() : rej(ABORT)), ms));
+}
+const SVG_NS = "http://www.w3.org/2000/svg";
+/** A stream's glowing line along d, in its own group in into. */
+function streamLine(into, d, colour, dashed) {
+  const g = document.createElementNS(SVG_NS, "g"), path = document.createElementNS(SVG_NS, "path");
+  path.setAttribute("d", d);
+  path.setAttribute("stroke", colour);
+  path.setAttribute("filter", "url(#glow-line)");
+  path.style.opacity = dashed ? "0.75" : "0.9";
+  g.append(path);
+  into.append(g);
+  return {g, path};
+}
+/** A glowing stream drawn along d over ms, a bright head leading it; resolves when it arrives. */
+function stream(into, d, colour, ms, my, dashed) {
+  const {g, path} = streamLine(into, d, colour, dashed), head = document.createElementNS(SVG_NS, "circle");
+  head.setAttribute("r", "3.4");
+  head.setAttribute("fill", colour);
+  head.setAttribute("filter", "url(#glow)");
+  g.append(head);
+  const len = path.getTotalLength();
+  path.style.strokeDasharray = `${len} ${len}`;
+  path.style.strokeDashoffset = String(len);
+  return new Promise((res, rej) => {
+    const t0 = performance.now();
+    const step = now => {
+      if (my !== token) { rej(ABORT); return; }
+      const t = Math.min(1, (now - t0) / ms), e = ease(t), p = path.getPointAtLength(len * e);
+      path.style.strokeDashoffset = String(len * (1 - e));
+      head.setAttribute("cx", p.x);
+      head.setAttribute("cy", p.y);
+      if (t < 1) { requestAnimationFrame(step); return; }
+      head.remove();
+      // Arrived: the drawn line now carries a slow moving dash, the stream still flowing.
+      path.style.strokeDasharray = "";
+      path.style.strokeDashoffset = "";
+      path.classList.add("flowing");
+      res();
+    };
+    requestAnimationFrame(step);
+  });
+}
+
+const colourOf = c => (c === "stream" ? getComputedStyle(document.documentElement).getPropertyValue("--stream").trim() : ROLE[c]);
+function say(text) { announce.textContent = text; }
+function setControls(done) { $("running").hidden = done; $("done").hidden = !done; }
+
+let wpm = PACE.wpm;
+function showSpeed() {
+  const on = paceButtons(wpm);
+  $("slower").disabled = !on.slower;
+  $("faster").disabled = !on.faster;
+  $("speed").textContent = speedLabel(wpm);
+}
+// A press changes no step under way: the next step reads wpm when it starts, so the flow keeps going at the new pace.
+$("slower").addEventListener("click", () => { wpm = nextWpm(wpm, -1); showSpeed(); });
+$("faster").addEventListener("click", () => { wpm = nextWpm(wpm, 1); showSpeed(); });
+
+/** One step of PLAN: show what it shows, start its motion, and stay stepMs at the pace it started with. */
+async function playStep(st, my) {
+  const ms = stepMs(st, wpm), travel = st.motion ? motionMs(wpm * PACE.factor[st.motion]) : 0, motions = [];
+  if (st.say !== undefined) say(st.say);
+  if (st.clear) {
+    stage.querySelectorAll(".lit, .win").forEach(el => { if (el.dataset.id !== "start") el.classList.remove("lit", "win"); });
+    $("runStreams").innerHTML = "";
+  }
+  if (st.card) stage.querySelector(`.card[data-card="${st.card}"]`).classList.add("in");
+  if (st.flow) {
+    const into = $("inStreams"), colour = colourOf("stream");
+    for (const s of scene.streams.filter(x => st.flow.includes(x.id))) motions.push(stream(into, s.d, colour, travel, my, s.optional));
+  }
+  if (st.node === "start") nodeEl("start").classList.remove("await");
+  else if (st.node) nodeEl(st.node).classList.add("lit");
+  const along = edgeStream(scene.chart, st);
+  if (st.edge) edgeEls(st.edge).forEach(el => el.classList.add("lit"));
+  if (along) motions.push(stream($("runStreams"), along.d, colourOf(along.colour), travel, my));
+  if (st.verdict) nodeEl(st.verdict).classList.add("lit", "win");
+  if (st.rise) {
+    // The inputs give way and the validator rises to the top of the flowchart, over the step's motion time.
+    const s = nodeEl("start");
+    s.style.transition = `transform ${Math.round(travel)}ms cubic-bezier(.65, 0, .35, 1), opacity 450ms ease`;
+    stage.classList.remove("scene-inputs");
+    stage.classList.add("scene-chart", "running");
+    s.classList.add("lit");
+    s.style.transform = "";
+  }
+  await Promise.all([sleeper(my)(ms), ...motions]);
+}
+
+function showFinal() {
+  token++;
+  if (!scene) render(kindNow());
+  stage.classList.remove("scene-inputs", "running");
+  stage.classList.add("scene-chart", "final");
+  stage.querySelectorAll(".lit, .win").forEach(el => el.classList.remove("lit", "win"));
+  stage.querySelectorAll(".stream").forEach(el => { el.innerHTML = ""; });
+  const s = nodeEl("start");
+  s.classList.remove("await");
+  s.style.transform = "";
+  picked = null;
+  stage.classList.remove("picking");
+  stage.querySelectorAll(".node.verdict").forEach(el => {
+    Object.entries({role: "button", tabindex: "0", "aria-pressed": "false",
+      "aria-label": `${DATA.outcomes[el.dataset.id]}: show the path to it`}).forEach(([k, v]) => el.setAttribute(k, v));
+  });
+  say(FINAL_ANNOUNCE);
+  setControls(true);
+}
+
+/* ---------- the final chart: a pressed verdict shows its run's path ---------- */
+let picked = null;
+function pick(id) {
+  picked = nextPick(picked, id);
+  stage.querySelectorAll(".lit, .win").forEach(el => el.classList.remove("lit", "win"));
+  $("runStreams").innerHTML = "";
+  stage.querySelectorAll(".node.verdict").forEach(el => el.setAttribute("aria-pressed", String(el.dataset.id === picked)));
+  stage.classList.toggle("picking", picked !== null);
+  if (picked === null) return;
+  const path = runPath(picked);
+  path.nodes.forEach(n => nodeEl(n).classList.add("lit"));
+  nodeEl(picked).classList.add("win");
+  for (const e of path.edges) {
+    edgeEls(e).forEach(el => el.classList.add("lit"));
+    // Under reduced motion the path is lit and nothing flows.
+    if (!reduceMq.matches) streamLine($("runStreams"), scene.chart.geo[e], colourOf(EDGES.find(x => x.id === e).ans || "stream")).path.classList.add("flowing");
+  }
+}
+const pressedVerdict = ev => (stage.classList.contains("final") ? ev.target.closest(".node.verdict") : null);
+stage.addEventListener("click", ev => { const v = pressedVerdict(ev); if (v) pick(v.dataset.id); });
+stage.addEventListener("keydown", ev => {
+  const v = pressedVerdict(ev);
+  if (v && activates(ev.key)) { ev.preventDefault(); pick(v.dataset.id); }
+});
+
+async function play() {
+  const my = ++token;
+  render(kindNow());
+  setControls(false);
+  picked = null;
+  stage.classList.remove("scene-chart", "running", "final", "picking");
+  stage.classList.add("scene-inputs");
+  const s = nodeEl("start");
+  // The validator box starts where the inputs end, unseen, and is shown when the files reach it.
+  s.style.transition = "none";
+  s.style.transform = `translate(0px, ${fmt(scene.startShift)}px)`;
+  s.classList.add("await");
+  s.getBoundingClientRect();
+  s.style.transition = "";
+  try {
+    for (const st of PLAN) if (!st.final) await playStep(st, my);
+    showFinal();
+  } catch (e) {
+    if (e !== ABORT) throw e;
+  }
+}
+
+const kindNow = () => ($("wrap").clientWidth < 520 ? "narrow" : "wide");
+function start() {
+  if (reduceMq.matches) { token++; render(kindNow()); showFinal(); } else play();
+}
+reduceMq.addEventListener("change", () => { if (reduceMq.matches) showFinal(); });
+new ResizeObserver(() => {
+  if (!scene || scene.kind === kindNow()) return;
+  // The other layout: the final chart redraws in place; a flow under way starts again in the new one.
+  if (stage.classList.contains("final")) {
+    const was = picked;
+    render(kindNow());
+    showFinal();
+    if (was) pick(was);
+  } else start();
+}).observe($("wrap"));
+
+/* ---------- saving ---------- */
+/** Offer a file through a Blob and an anchor with download; false where that cannot even be tried. */
+function saveFile(filename, data, type) {
+  try {
+    const a = document.createElement("a");
+    if (!("download" in a)) return false;
+    a.href = URL.createObjectURL(new Blob([data], {type}));
+    a.download = filename;
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+function showSvgText(why) {
+  const ta = $("svgText");
+  ta.hidden = false;
+  ta.value = exportSvg();
+  ta.focus();
+  ta.select();
+  $("saveNote").textContent = why;
+}
+function save(ext) {
+  const name = `psm_spectrum_validator_flowchart.${ext}`;
+  const ok = ext === "svg" ? saveFile(name, exportSvg(), "image/svg+xml") : saveFile(name, exportPdf(), "application/pdf");
+  if (ok) $("saveNote").textContent = `Saved as ${name}. If nothing downloaded, Show the SVG text gives the chart to copy.`;
+  else showSvgText("This view cannot save files, so the SVG is below: copy it into a .svg file.");
+}
+$("saveSvg").addEventListener("click", () => save("svg"));
+$("savePdf").addEventListener("click", () => save("pdf"));
+$("showSvg").addEventListener("click", () => showSvgText("The SVG text, to copy into a .svg file."));
+$("repeat").addEventListener("click", () => { $("svgText").hidden = true; $("saveNote").textContent = ""; start(); });
+$("skip").addEventListener("click", showFinal);
+showSpeed();
+start();
+</script>
+</body>
+</html>

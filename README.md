@@ -5,6 +5,15 @@ spectrum at a time through a short flowchart of questions: coverage by b and y i
 prominent ions, extra peaks, gaps and peaks beyond the end. It compares each of your answers with a rule-based
 reference model.
 
+![The validator's flowchart: eight questions from coverage to one of six verdicts](flowchart.svg)
+
+Open it in your browser, nothing to install:
+
+- [The validator](https://aramburu-lab.github.io/psm-spectrum-validator/spectrum_validator.html)
+- [The flowchart, animated](https://aramburu-lab.github.io/psm-spectrum-validator/flowchart.html): the files it reads, then a
+  stream through the questions to each verdict. Press a verdict on the finished chart to light its path; PDF and SVG
+  save the chart.
+
 ## Where the flowchart comes from
 
 The flowchart of questions and verdicts is adapted from:
@@ -17,7 +26,8 @@ are this tool's own interpretation of it, so a verdict here is not a verdict of 
 
 ## Using it
 
-Download `spectrum_validator.html` and open it in a browser. Nothing is installed and nothing leaves your computer.
+Use the link above, or download `spectrum_validator.html` and open it in a browser. Nothing is installed and the
+spectra you load never leave your computer.
 
 - **Load MGF** reads centroided spectra, one record per spectrum, with the peptide on a `SEQ=` line in ProForma with
   signed mass deltas, such as `[+42.0106]-LVNELTEFAK` or `PEPTM[+15.9949]K`.
