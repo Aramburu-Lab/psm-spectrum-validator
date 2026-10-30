@@ -5,6 +5,16 @@ spectrum at a time through a short flowchart of questions: coverage by b and y i
 prominent ions, extra peaks, gaps and peaks beyond the end. It compares each of your answers with a rule-based
 reference model.
 
+## Where the flowchart comes from
+
+The flowchart of questions and verdicts is adapted from:
+
+> Deutsch, E.W., Kok, L.W., Mudge, J.M. et al. Expanding the human proteome with microproteins and peptideins.
+> *Nature* 654, 813–825 (2026). https://doi.org/10.1038/s41586-026-10459-x
+
+Please cite that paper when you use or describe the flowchart. The reference model's rules and some question wordings
+are this tool's own interpretation of it, so a verdict here is not a verdict of the paper's authors.
+
 ## Using it
 
 Download `spectrum_validator.html` and open it in a browser. Nothing is installed and nothing leaves your computer.
