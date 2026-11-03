@@ -38,7 +38,7 @@ spectra you load never leave your computer.
 
 ## Feedback
 
-Use **Help make this tool better** at the bottom of the page, or **Have a different opinion?** under any reply of the
+Use **Help make this tool better** at the top of the page, or **Have a different opinion?** under any reply of the
 reference model. Each saves a text note with the tool's version and settings. Post it as an
 [issue here](https://github.com/Aramburu-Lab/psm-spectrum-validator/issues), or email it to rytis.stakaitis@umu.se.
 

@@ -17,13 +17,22 @@ h1 { font-size: 1.5rem; line-height: 1.2; margin: 0 0 12px; }
 /* The stage is told to screen readers only: the page shows no caption of its own. */
 .sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-#wrap { width: 100%; }
+#wrap { width: 100%; position: relative; }
+/* A verdict reached by two routes asks which to show, as Rytis asked on 2026-11-03: Path 1 and Path 2, under it. */
+.paths { position: absolute; z-index: 2; display: flex; gap: 6px; padding: 6px; transform: translateX(-50%);
+  background: var(--card); border: 1px solid var(--cardline); border-radius: 6px; }
+/* Its display would otherwise outrank hidden, and a closed choice would still be drawn, as it was until 2026-11-03. */
+.paths[hidden] { display: none; }
+.paths button { padding: 6px 10px; }
+.paths button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
 #stage { display: block; width: 100%; height: auto; overflow: visible; }
 .controls { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; margin-top: 12px; min-height: 40px; }
 /* The running and done buttons join the row itself, so on a narrow line "Show the SVG text" wraps before the speed
    buttons leave Repeat, PDF and SVG. */
 .group { display: contents; }
 .group[hidden] { display: none; }
+/* The parts are moments of the flow, which reduced motion never plays: the page then shows the finished chart alone. */
+@media (prefers-reduced-motion: reduce) { #jumps { display: none; } }
 .pace { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 #showSvg { order: 1; }
 #speed { font-size: 0.95rem; color: var(--muted); }
@@ -45,6 +54,8 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 #stage .mono { font-family: ui-monospace, Menlo, Consolas, "Liberation Mono", monospace; }
 #stage .card, #stage .node, #stage .edge, #stage .elabel, #stage .inputs, #stage .stream {
   transition: opacity 450ms cubic-bezier(.45, 0, .25, 1); }
+/* A jump draws the stage as the steps before it leave it, at once. */
+#stage.instant, #stage.instant * { transition: none !important; }
 #stage.scene-inputs .node:not([data-id="start"]), #stage.scene-inputs .edge, #stage.scene-inputs .elabel { opacity: 0; }
 #stage.scene-inputs .node[data-id="start"].await { opacity: 0; }
 #stage.scene-chart .inputs { opacity: 0; }
@@ -68,12 +79,14 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 <main>
   <h1>PSM Spectrum Validator</h1>
   <p id="announce" class="sr-only" aria-live="polite"></p>
-  <div id="wrap"><svg id="stage" role="img" aria-labelledby="stageTitle"><title id="stageTitle">The PSM Spectrum Validator flowchart</title></svg></div>
+  <div id="wrap"><svg id="stage" role="img" aria-labelledby="stageTitle"><title id="stageTitle">The PSM Spectrum Validator flowchart</title></svg>
+    <div id="paths" class="paths" role="group" hidden></div></div>
   <p class="cite" id="cite">Flowchart adapted from Deutsch, E.W., Kok, L.W., Mudge, J.M. et al. Expanding the human proteome
     with microproteins and peptideins. Nature 654, 813&#8211;825 (2026).
     <a href="https://doi.org/10.1038/s41586-026-10459-x">https://doi.org/10.1038/s41586-026-10459-x</a></p>
   <div class="controls">
     <div class="group" id="running">
+      <button type="button" class="primary" id="pause">Pause</button>
       <button type="button" id="skip">Skip to the flowchart</button>
     </div>
     <div class="group" id="done" hidden>
@@ -81,6 +94,10 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
       <button type="button" id="savePdf" aria-label="Save the flowchart as PDF">PDF</button>
       <button type="button" id="saveSvg" aria-label="Save the flowchart as SVG">SVG</button>
       <button type="button" class="linkish" id="showSvg">Show the SVG text</button>
+    </div>
+    <div class="group" id="jumps">
+      <button type="button" id="jumpFiles">Files part</button>
+      <button type="button" id="jumpFlow">Flowchart part</button>
     </div>
     <div class="pace" role="group" aria-label="Reading pace">
       <button type="button" id="slower">Slow down</button>
@@ -102,7 +119,7 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 {
   "questions": {
     "q1": {"name": "Coverage", "text": "Do the b and y ion series yield nearly complete coverage?", "yes": "q2", "no": "q7"},
-    "q2": {"name": "Unannotated ions", "text": "Are there unannotated ions with appropriate mass defect in gaps between annotated ions?", "yes": "q4", "no": "q3"},
+    "q2": {"name": "Unannotated ions", "text": "Are there unannotated ions in gaps between annotated ions?", "yes": "q4", "no": "q3"},
     "q3": {"name": "Prominent ions", "text": "Do the prominent ions have good explanations?", "yes": "excellent", "no": "q4"},
     "q4": {"name": "Extra peaks", "text": "Are there extra peaks not needed in the explanation of the proposed peptide?", "yes": "contam", "no": "good"},
     "q7": {"name": "Major gaps", "text": "Are there major gaps in coverage?", "yes": "q8", "no": "q5"},
@@ -120,8 +137,10 @@ button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
   },
   "runs": [
     {"verdict": "excellent", "path": [["q1", "yes"], ["q2", "no"], ["q3", "yes"]]},
-    {"verdict": "good", "path": [["q1", "yes"], ["q2", "yes"], ["q4", "no"]]},
+    {"verdict": "good", "path": [["q1", "yes"], ["q2", "no"], ["q3", "no"], ["q4", "no"]]},
     {"verdict": "contam", "path": [["q1", "yes"], ["q2", "yes"], ["q4", "yes"]]},
+    {"verdict": "contam", "path": [["q1", "no"], ["q7", "no"], ["q5", "yes"], ["q6", "no"]]},
+    {"verdict": "close", "path": [["q1", "no"], ["q7", "no"], ["q5", "yes"], ["q6", "yes"]]},
     {"verdict": "close", "path": [["q1", "no"], ["q7", "no"], ["q5", "no"]]},
     {"verdict": "fp", "path": [["q1", "no"], ["q7", "yes"], ["q8", "yes"]]},
     {"verdict": "lowinfo", "path": [["q1", "no"], ["q7", "yes"], ["q8", "no"]]}
@@ -611,6 +630,18 @@ const stepMs = (st, wpm) => (st.hold ? PACE.pathHoldMs : Math.max(PACE.floorMs, 
 const nextWpm = (wpm, dir) => Math.min(PACE.max, Math.max(PACE.min, wpm + dir * PACE.change));
 const paceButtons = wpm => ({slower: wpm > PACE.min, faster: wpm < PACE.max});
 const speedLabel = wpm => `${wpm} words per minute`;
+/** A clock that stops while paused, so a viewer can stop on a view, read it and go on, as Rytis asked on 2026-11-02:
+ *  a step's dwell and a stream's travel count running time alone, and Continue takes up the step with the time it had
+ *  left. `now` is the time source; a second Pause or Continue changes nothing. */
+function pauseClock(now) {
+  let at = null, lost = 0;
+  return {
+    now: () => (at ?? now()) - lost,
+    paused: () => at !== null,
+    pause() { if (at === null) at = now(); },
+    resume() { if (at !== null) { lost += now() - at; at = null; } },
+  };
+}
 const FINAL_ANNOUNCE = `The full flowchart: ${Object.keys(DATA.questions).length} questions, ` +
   `${Object.keys(DATA.outcomes).length} verdicts.`;
 
@@ -649,13 +680,19 @@ function buildPlan() {
   return plan;
 }
 const PLAN = Object.freeze(buildPlan());
+/** Where each part of the flow starts, read from the plan, as Rytis asked on 2026-11-03: the files at the first file
+ *  card, the flowchart at the first run, its stream from the validator box to Coverage. */
+const PART_START = Object.freeze({files: PLAN.findIndex(st => st.card), flowchart: PLAN.findIndex(st => st.clear)});
 
-/** The path a verdict's run took: every edge from the validator box to the verdict, and every box it lit.
- *  Two verdicts have a second route in the full graph that no run takes: Good but some contamination also through
- *  q1 No, q7 No, q5 Yes, q6 No, and Close but false positive through q1 No, q7 No, q5 Yes, q6 Yes. A pressed verdict
- *  shows its run's route, as Rytis asked on 2026-10-30. */
-function runPath(verdict) {
-  const run = DATA.runs.find(r => r.verdict === verdict);
+/** The runs that end in a verdict, in run order. Since Rytis set the eight runs on 2026-11-03, one for each line into a
+ *  verdict, Good but some contamination and Close but false positive each end two: through q4 Yes and q6 No, and through
+ *  q6 Yes and q5 No. */
+const routesOf = verdict => DATA.runs.filter(r => r.verdict === verdict);
+/** The path of a verdict's route k, its run's: every edge from the validator box to the verdict, and every box it lit.
+ *  A pressed verdict shows its run's route, as Rytis asked on 2026-10-30; one with two asks which, Path 1 or Path 2, in
+ *  run order, as he asked on 2026-11-03. */
+function runPath(verdict, k = 0) {
+  const run = routesOf(verdict)[k];
   return {edges: ["start-q1", ...run.path.map(([q, a]) => `${q}-${a}`)], nodes: ["start", ...run.path.map(([q]) => q), verdict]};
 }
 /** The verdict shown after a press on id: pressing the shown one again clears it. */
@@ -664,7 +701,7 @@ const nextPick = (picked, id) => (picked === id ? null : id);
 const activates = key => key === "Enter" || key === " " || key === "Spacebar";
 
 globalThis.FlowCore = {DATA, START, CITATION, STYLE, ROLE, THEME, LAYOUTS, EDGES, buildChart, GLOW_LINE, edgeStream, exportSvg, exportPdf, contrastPairs, textW, esc, fmt, dOf,
-  CARDS, PACE, PLAN, runPath, nextPick, activates, countWords, stepMs, motionMs, nextWpm, paceButtons, speedLabel};
+  CARDS, PACE, PLAN, PART_START, routesOf, runPath, nextPick, activates, countWords, stepMs, motionMs, nextWpm, paceButtons, speedLabel, pauseClock};
 </script>
 
 <script id="flow-ui">
@@ -776,8 +813,19 @@ let token = 0;
 const ABORT = Symbol("abort");
 const reduceMq = matchMedia("(prefers-reduced-motion: reduce)");
 const ease = t => (t < 0.5 ? 4 * t * t * t : 1 - (-2 * t + 2) ** 3 / 2);
+const clock = pauseClock(() => performance.now());
+/** Waits ms of the clock's running time, so a paused step keeps the rest of its time for Continue: a wait that ends
+ *  while paused finds the same time left and waits again, and one that ends after Continue waits out what remains. */
 function sleeper(my) {
-  return ms => new Promise((res, rej) => setTimeout(() => (my === token ? res() : rej(ABORT)), ms));
+  return ms => new Promise((res, rej) => {
+    const end = clock.now() + ms;
+    const wait = () => {
+      if (my !== token) { rej(ABORT); return; }
+      const left = end - clock.now();
+      if (left <= 0) res(); else setTimeout(wait, left);
+    };
+    wait();
+  });
 }
 const SVG_NS = "http://www.w3.org/2000/svg";
 /** A stream's glowing line along d, in its own group in into. */
@@ -802,10 +850,10 @@ function stream(into, d, colour, ms, my, dashed) {
   path.style.strokeDasharray = `${len} ${len}`;
   path.style.strokeDashoffset = String(len);
   return new Promise((res, rej) => {
-    const t0 = performance.now();
-    const step = now => {
+    const t0 = clock.now();
+    const step = () => {
       if (my !== token) { rej(ABORT); return; }
-      const t = Math.min(1, (now - t0) / ms), e = ease(t), p = path.getPointAtLength(len * e);
+      const t = Math.min(1, (clock.now() - t0) / ms), e = ease(t), p = path.getPointAtLength(len * e);
       path.style.strokeDashoffset = String(len * (1 - e));
       head.setAttribute("cx", p.x);
       head.setAttribute("cy", p.y);
@@ -835,6 +883,25 @@ function showSpeed() {
 // A press changes no step under way: the next step reads wpm when it starts, so the flow keeps going at the new pace.
 $("slower").addEventListener("click", () => { wpm = nextWpm(wpm, -1); showSpeed(); });
 $("faster").addEventListener("click", () => { wpm = nextWpm(wpm, 1); showSpeed(); });
+
+/* ---------- pause and continue ---------- */
+// The clock holds the step and the stream. The stage's own CSS motion, the fades, the validator's rise and the flowing
+// dashes, is held through the Web Animations API, which pauses CSS transitions as well as keyframes.
+let held = [];
+function setPaused(on) {
+  if (on === clock.paused()) return;
+  if (on) {
+    clock.pause();
+    held = stage.getAnimations({subtree: true}).filter(a => a.playState === "running");
+    held.forEach(a => a.pause());
+  } else {
+    clock.resume();
+    held.forEach(a => a.play());
+    held = [];
+  }
+  $("pause").textContent = on ? "Continue" : "Pause";
+}
+$("pause").addEventListener("click", () => { setPaused(!clock.paused()); say(clock.paused() ? "Paused." : "Continuing."); });
 
 /** One step of PLAN: show what it shows, start its motion, and stay stepMs at the pace it started with. */
 async function playStep(st, my) {
@@ -869,6 +936,7 @@ async function playStep(st, my) {
 
 function showFinal() {
   token++;
+  setPaused(false);
   if (!scene) render(kindNow());
   stage.classList.remove("scene-inputs", "running");
   stage.classList.add("scene-chart", "final");
@@ -878,6 +946,8 @@ function showFinal() {
   s.classList.remove("await");
   s.style.transform = "";
   picked = null;
+  route = null;
+  $("paths").hidden = true;
   stage.classList.remove("picking");
   stage.querySelectorAll(".node.verdict").forEach(el => {
     Object.entries({role: "button", tabindex: "0", "aria-pressed": "false",
@@ -888,22 +958,59 @@ function showFinal() {
 }
 
 /* ---------- the final chart: a pressed verdict shows its run's path ---------- */
-let picked = null;
-function pick(id) {
-  picked = nextPick(picked, id);
+// The verdict pressed, and which of its routes is lit, null while one with two asks which.
+let picked = null, route = null;
+/** The pressed verdict's route lit, every box and line of it, each line with a flowing stream, or nothing. */
+function light() {
   stage.querySelectorAll(".lit, .win").forEach(el => el.classList.remove("lit", "win"));
   $("runStreams").innerHTML = "";
   stage.querySelectorAll(".node.verdict").forEach(el => el.setAttribute("aria-pressed", String(el.dataset.id === picked)));
   stage.classList.toggle("picking", picked !== null);
   if (picked === null) return;
-  const path = runPath(picked);
-  path.nodes.forEach(n => nodeEl(n).classList.add("lit"));
   nodeEl(picked).classList.add("win");
+  if (route === null) return;
+  const path = runPath(picked, route);
+  path.nodes.forEach(n => nodeEl(n).classList.add("lit"));
   for (const e of path.edges) {
     edgeEls(e).forEach(el => el.classList.add("lit"));
     // Under reduced motion the path is lit and nothing flows.
     if (!reduceMq.matches) streamLine($("runStreams"), scene.chart.geo[e], colourOf(EDGES.find(x => x.id === e).ans || "stream")).path.classList.add("flowing");
   }
+}
+/** The choice of routes, Path 1 and Path 2, under the pressed verdict while it has two, the one lit shown pressed. */
+function showPaths() {
+  const box = $("paths"), n = picked ? routesOf(picked).length : 0;
+  box.hidden = n < 2;
+  if (box.hidden) return;
+  box.setAttribute("aria-label", `Paths to ${DATA.outcomes[picked]}`);
+  box.innerHTML = Array.from({length: n}, (_, k) => `<button type="button" data-route="${k}" aria-pressed="${route === k}" ` +
+    `aria-label="Path ${k + 1} of ${n}">Path ${k + 1}</button>`).join("");
+  const N = scene.chart.N[picked], r = stage.getBoundingClientRect(), w = $("wrap").getBoundingClientRect(), scale = r.width / scene.chart.W;
+  box.style.left = `${fmt(r.left - w.left + N.x * scale)}px`;
+  box.style.top = `${fmt(r.top - w.top + (N.y + N.h) * scale + 4)}px`;
+}
+/** A verdict pressed: one with one route lights it, and one with two asks which, focus on Path 1. Pressed again, one
+ *  with one route clears; one with two asks again while its choice is closed, its lit path's button pressed, as Rytis
+ *  asked on 2026-11-03, and clears while it asks. Another verdict pressed takes its place. */
+function pick(id) {
+  if (picked === id && routesOf(id).length > 1 && $("paths").hidden) {
+    showPaths();
+    $("paths").querySelector(`[data-route="${route ?? 0}"]`).focus();
+    return;
+  }
+  picked = nextPick(picked, id);
+  route = picked && routesOf(picked).length === 1 ? 0 : null;
+  light();
+  showPaths();
+  if (!$("paths").hidden) $("paths").querySelector("button").focus();
+}
+/** Route k of the pressed verdict lit, and the choice closed, as Rytis asked on 2026-11-03, focus back on its verdict. */
+function choose(k) {
+  route = k;
+  light();
+  $("paths").hidden = true;
+  nodeEl(picked).focus();
+  say(`Path ${k + 1} of ${routesOf(picked).length} to ${DATA.outcomes[picked]}.`);
 }
 const pressedVerdict = ev => (stage.classList.contains("final") ? ev.target.closest(".node.verdict") : null);
 stage.addEventListener("click", ev => { const v = pressedVerdict(ev); if (v) pick(v.dataset.id); });
@@ -911,12 +1018,26 @@ stage.addEventListener("keydown", ev => {
   const v = pressedVerdict(ev);
   if (v && activates(ev.key)) { ev.preventDefault(); pick(v.dataset.id); }
 });
+$("paths").addEventListener("click", ev => { const b = ev.target.closest("[data-route]"); if (b) choose(+b.dataset.route); });
+// Escape and a click elsewhere close the choice, the route lit staying lit; Escape hands focus back to its verdict.
+document.addEventListener("keydown", ev => {
+  if (ev.key !== "Escape" || $("paths").hidden) return;
+  $("paths").hidden = true;
+  nodeEl(picked).focus();
+});
+document.addEventListener("click", ev => {
+  if (!$("paths").hidden && !ev.target.closest("#paths") && !(ev.target.closest(".node.verdict") || {dataset: {}}).dataset.id) $("paths").hidden = true;
+});
 
-async function play() {
+/** The flow played from the plan's step `from`, the stage first drawn as the steps before it leave it. */
+async function play(from = 0) {
   const my = ++token;
+  setPaused(false);
   render(kindNow());
   setControls(false);
   picked = null;
+  route = null;
+  $("paths").hidden = true;
   stage.classList.remove("scene-chart", "running", "final", "picking");
   stage.classList.add("scene-inputs");
   const s = nodeEl("start");
@@ -926,29 +1047,63 @@ async function play() {
   s.classList.add("await");
   s.getBoundingClientRect();
   s.style.transition = "";
+  settle(from);
   try {
-    for (const st of PLAN) if (!st.final) await playStep(st, my);
+    for (const st of PLAN.slice(from)) if (!st.final) await playStep(st, my);
     showFinal();
   } catch (e) {
     if (e !== ABORT) throw e;
   }
 }
+/** The stage as the plan's steps before `from` leave it, drawn at once: the cards shown, the validator in view and,
+ *  once it has risen, at the top of the chart with the inputs gone. Their streams are not drawn, as the inputs are gone
+ *  by the only part that starts later. */
+function settle(from) {
+  stage.classList.add("instant");
+  const s = nodeEl("start");
+  for (const st of PLAN.slice(0, from)) {
+    if (st.card) stage.querySelector(`.card[data-card="${st.card}"]`).classList.add("in");
+    if (st.node === "start") s.classList.remove("await");
+    if (st.rise) {
+      stage.classList.replace("scene-inputs", "scene-chart");
+      stage.classList.add("running");
+      s.classList.add("lit");
+      s.style.transform = "";
+    }
+  }
+  stage.getBoundingClientRect();
+  stage.classList.remove("instant");
+}
+/** The files part or the flowchart part played from its start, as Rytis asked on 2026-11-03: a pause, a lit path and an
+ *  open choice cleared, the speed kept. */
+function jump(part) {
+  $("svgText").hidden = true;
+  $("saveNote").textContent = "";
+  if (part === "flowchart") say("The flowchart.");
+  play(PART_START[part]);
+}
+$("jumpFiles").addEventListener("click", () => jump("files"));
+$("jumpFlow").addEventListener("click", () => jump("flowchart"));
 
 const kindNow = () => ($("wrap").clientWidth < 520 ? "narrow" : "wide");
 function start() {
   if (reduceMq.matches) { token++; render(kindNow()); showFinal(); } else play();
 }
 reduceMq.addEventListener("change", () => { if (reduceMq.matches) showFinal(); });
-new ResizeObserver(() => {
+/** The other layout: the final chart redraws in place, its lit path kept and its choice closed; a flow under way starts
+ *  again in the new one. */
+function relayout() {
   if (!scene || scene.kind === kindNow()) return;
-  // The other layout: the final chart redraws in place; a flow under way starts again in the new one.
   if (stage.classList.contains("final")) {
-    const was = picked;
+    const was = picked, r = route;
     render(kindNow());
     showFinal();
-    if (was) pick(was);
+    picked = was;
+    route = r;
+    light();
   } else start();
-}).observe($("wrap"));
+}
+new ResizeObserver(relayout).observe($("wrap"));
 
 /* ---------- saving ---------- */
 /** Offer a file through a Blob and an anchor with download; false where that cannot even be tried. */
