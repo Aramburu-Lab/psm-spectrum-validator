@@ -1,18 +1,31 @@
 # PSM Spectrum Validator
 
 A single, self-contained web page for judging peptide-spectrum matches (PSMs) by eye. It walks one annotated MS/MS
-spectrum at a time through a short flowchart of questions: coverage by b and y ions, unannotated ions, the most
-prominent ions, extra peaks, gaps and peaks beyond the end. It compares each of your answers with a rule-based
-reference model.
+spectrum at a time through a flowchart of eight questions, from coverage by b and y ions to one of six verdicts, and
+compares each of your answers with a rule-based reference model.
 
 ![The validator's flowchart: eight questions from coverage to one of six verdicts](flowchart.svg)
 
-Open it in your browser, nothing to install:
+- [Open the validator](https://aramburu-lab.github.io/psm-spectrum-validator/spectrum_validator.html), with nothing to
+  install. The spectra you load are read in your browser and never leave your computer.
+- [Follow the step-by-step guide](https://aramburu-lab.github.io/psm-spectrum-validator/guide.html) from a finished
+  FragPipe search to judged spectra. It shows one instruction at a time and writes each command for your computer and
+  your own folders.
+- [See the flowchart animated](https://aramburu-lab.github.io/psm-spectrum-validator/flowchart.html): the files it
+  reads, then a stream through the questions to each verdict.
 
-- [The validator](https://aramburu-lab.github.io/psm-spectrum-validator/spectrum_validator.html)
-- [The flowchart, animated](https://aramburu-lab.github.io/psm-spectrum-validator/flowchart.html): the files it reads, then a
-  stream through the questions to each verdict. Press a verdict on the finished chart to light its path; PDF and SVG
-  save the chart.
+## Making the input files from FragPipe
+
+`scripts/python/export_mgf.py` turns a finished FragPipe search into the MGF files the validator loads. It runs with
+Docker, which needs nothing else installed, or with Python 3.10 or newer; [the guide](guide.html) gives the commands
+for either. `python scripts/python/export_mgf.py --help` lists every option, and `--selftest` checks an installation.
+
+It reads each experiment's `psm.tsv` and each run's spectra: the `<run>_uncalibrated.mzML` MSFragger writes beside a
+Thermo `.raw` file, or the `<run>.mzML` that was searched. Bruker `.d` input is not read. The export never uses the
+network.
+
+`requirements.txt` names the two packages it imports. The `Dockerfile` installs them with every other package fixed
+at the version tested, as `constraints.txt` lists.
 
 ## Where the flowchart comes from
 
@@ -23,18 +36,6 @@ The flowchart of questions and verdicts is adapted from:
 
 Please cite that paper when you use or describe the flowchart. The reference model's rules and some question wordings
 are this tool's own interpretation of it, so a verdict here is not a verdict of the paper's authors.
-
-## Using it
-
-Use the link above, or download `spectrum_validator.html` and open it in a browser. Nothing is installed and the
-spectra you load never leave your computer.
-
-- **Load MGF** reads centroided spectra, one record per spectrum, with the peptide on a `SEQ=` line in ProForma with
-  signed mass deltas, such as `[+42.0106]-LVNELTEFAK` or `PEPTM[+15.9949]K`.
-- **Load controls** reads PSMs you trust, each with a `HYPERSCORE=` line, so every spectrum is set beside the controls
-  nearest it in score.
-- **Information** in the page shows the format and offers a small example file.
-- **Export results to csv** saves every answer, mark and verdict.
 
 ## Feedback
 

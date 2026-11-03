@@ -1,0 +1,6 @@
+# scripts/python/export_mgf.py reads mzML with pyteomics, whose xml extra brings lxml, numpy and
+# psims. pyteomics 5 refuses to parse mzML without psims, and the export takes the PSI-MS
+# vocabulary from the copy psims ships, so opening an mzML never goes to the network. Both pins
+# are the versions the export was tested with.
+pyteomics[xml]==5.0.1
+psims==1.4.0

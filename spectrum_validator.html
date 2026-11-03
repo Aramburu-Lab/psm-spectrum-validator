@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PSM Spectrum Validator</title>
-<meta id="release" name="release" content="2026-11-03" data-build="bd4cb073">
+<meta id="release" name="release" content="2026-11-03" data-build="999e065a">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one bench. Settings across the top, the spectrum list on the left, one large annotated
@@ -98,6 +98,18 @@ h1{font-size:21px;letter-spacing:-.01em;line-height:1.2}
 .banner:empty{display:none}
 .banner b{color:var(--ink)}
 .banner.warn{color:var(--fp)}
+/* The busy bar over a long load, as Rytis specified it on 2026-11-03. The load runs in one synchronous stretch in which
+   the main thread paints nothing, so the stripe moves by transform alone, which the compositor animates on a thread of
+   its own; a width, left, margin or background-position animation would stand still exactly then. */
+#busy{position:fixed;inset:0 0 auto 0;z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;padding:6px 14px;
+  background:var(--surface);border-bottom:1px solid var(--line);box-shadow:var(--shadow);font-size:13px;color:var(--ink)}
+#busy[hidden]{display:none}
+#busytrack{position:relative;flex:none;width:120px;height:4px;overflow:hidden;border-radius:2px;background:var(--line)}
+#busytrack i{position:absolute;inset:0;width:40%;border-radius:2px;background:var(--b);animation:busyslide 1.1s ease-in-out infinite}
+@keyframes busyslide{from{transform:translateX(-110%)}to{transform:translateX(310%)}}
+/* On a phone the words take a line of their own under a track across the bar, rather than a narrow column beside it. */
+#busytext{flex:1 1 16em;min-width:0;overflow-wrap:anywhere}
+@container (max-width:600px){#busytrack{width:100%}}
 
 .bench{display:grid;grid-template-columns:250px minmax(0,1fr);gap:22px;padding-block:14px}
 @container (max-width:860px){.bench{grid-template-columns:minmax(0,1fr)}.bench .list ol{max-height:190px}}
@@ -418,9 +430,11 @@ dialog.note p{margin:10px 0 0}
 .hovres{fill:var(--ink);fill-opacity:.14;stroke:var(--ink);stroke-opacity:.6;stroke-width:1;pointer-events:none}
 /* A model pointer's letters on the sequence, in the model's colour. */
 .evres{fill:var(--model);fill-opacity:.2;stroke:var(--model);stroke-width:1.5;stroke-dasharray:3 2;pointer-events:none}
-@media (prefers-reduced-motion:reduce){.track,.viewport{transition:none}.flash{animation:none}.halo,.rglow{animation:none;opacity:.6}.rpulse{display:none}.kpline{animation:none}.hov.browse{animation:none}.opinion.pulse::after{animation:none;opacity:.6}}
+@media (prefers-reduced-motion:reduce){.track,.viewport{transition:none}.flash{animation:none}.halo,.rglow{animation:none;opacity:.6}.rpulse{display:none}.kpline{animation:none}.hov.browse{animation:none}.opinion.pulse::after{animation:none;opacity:.6}
+  #busytrack i{animation:none;transform:translateX(80%)}}
 </style>
 
+<div id="busy" role="status" hidden><span id="busytrack" aria-hidden="true"><i></i></span><span id="busytext"></span></div>
 <div class="app">
 <header class="top">
   <div class="brand">
@@ -2663,6 +2677,22 @@ Each verdict is now set beside the {n} nearest in score.
 
 ## interface.controls.range
 hyperscore {lo} to {hi}
+
+# The busy bar
+
+A file large enough to hold the page still while it loads shows a bar across the top of
+the page, which names each step as it starts: for spectra the parse and then the list,
+for controls the parse alone. `{source}` is the file's name, `{mb}` its size in
+megabytes and `{n}` the spectra it holds. The bar shows plain text.
+
+## interface.busy.parse
+Parsing {source}, {mb} MB (1 of 2)
+
+## interface.busy.list
+Listing {n} {n|spectrum|spectra} (2 of 2)
+
+## interface.busy.controls
+Parsing {source} as controls, {mb} MB
 
 <!-- settings/spectrum_validator/model.md -->
 # The reference model's reasons
@@ -6529,19 +6559,73 @@ const markCount = st => { const m = answerMarks(st); return m.peaks.length + m.r
 const someOf = st => PICKS.has(st.node) && st.claim.quant === "some";
 const marksOf = st => { const m = answerMarks(st); return someOf(st) ? {...m, peaks: m.peaks.filter(k => st.claim.subset.includes(k))} : m; };
 
+/* ---------- the busy bar ---------- */
+// A wide export loads in one synchronous stretch in which the page paints nothing. Measured on 2026-11-03 in Chromium 152
+// on an M4 Pro, the 37.8 MB export of 6,841 PSMs took 344 ms to parse and 271 ms more to list as spectra, and 367 ms to
+// parse as controls. The examples, a settings change, a CSV export of 60 walked spectra and See all questions took at most
+// 44 ms and have no bar. With a wide export as the list every click takes about 0.2 s, all of it the list written anew,
+// where a bar would flicker on each click.
+const busyEl = $("busy"), busyText = $("busytext");
+// Two frames: the first commits the bar's style and the second paints it, so the work starts once the bar is on screen. A
+// hidden tab gets no frames at all, so a timeout settles it there.
+const nextPaint = () => new Promise(r => {
+  let done = false;
+  const go = () => { if (!done) { done = true; r(); } };
+  requestAnimationFrame(() => requestAnimationFrame(go));
+  setTimeout(go, 120);
+});
+// A depth, not a flag, so an operation ending inside another leaves the bar up.
+let busyDepth = 0;
+async function busy(label) {
+  busyDepth++;
+  busyText.textContent = label;
+  busyEl.hidden = false;
+  await nextPaint();
+}
+const busySay = label => { busyText.textContent = label; };
+function idle() {
+  busyDepth = Math.max(0, busyDepth - 1);
+  if (!busyDepth) busyEl.hidden = true;
+}
+async function withBusy(label, fn) {
+  await busy(label);
+  try { return await fn(busySay); } finally { idle(); }
+}
+// A file of BUSY_BYTES or more loads under the bar. Measured as above, the median of three runs on whole-record cuts of
+// that export: up to 8 MB a load took 125 ms or less as spectra and 120 ms or less as controls, too short for a bar to be
+// read, and its two frames' wait would only slow it; 12 MB took 196 and 146 ms. Every export the page has met is under
+// 2.3 MB or over 30 MB.
+const BUSY_BYTES = 10e6;
+const megabytes = bytes => fmt(bytes / 1e6, 1);
+/** A file's spectra loaded, at BUSY_BYTES or more under the bar: the parse, then the list, each named as it starts. */
+async function loadSpectra(text, source, bytes) {
+  if (bytes < BUSY_BYTES) return load(text, source);
+  await withBusy(tx("interface.busy.parse", {source, mb: megabytes(bytes)}), async say => {
+    const specs = parseMgf(text);
+    say(tx("interface.busy.list", {n: specs.length}));
+    await nextPaint();
+    load(text, source, specs);
+  });
+}
+/** A file's controls loaded, at BUSY_BYTES or more under the bar, which names their parse, the step that blocks. */
+async function loadControlsFile(text, source, bytes) {
+  if (bytes < BUSY_BYTES) return loadControls(text, source);
+  await withBusy(tx("interface.busy.controls", {source, mb: megabytes(bytes)}), () => loadControls(text, source));
+}
+
 /* ---------- loading ---------- */
 function judgedCount() { return [...S.walks.values()].filter(w => w.steps.some(st => st.phase === "judged")).length; }
-function requestLoad(text, source) {
+function requestLoad(text, source, bytes = text.length) {
   const n = judgedCount();
   if (n) {
-    S.pending = {text, source};
+    S.pending = {text, source, bytes};
     const what = source === "example" ? tx("interface.load.replace.example") : source;
     banner(`${txh("interface.load.replace", {source: what, n})} ${txh("interface.load.replace.keep")} ` +
       `<button type="button" class="btn small" data-load="yes">${esc(tx("interface.load.replace.yes"))}</button> ` +
       `<button type="button" class="btn ghost small" data-load="no">${esc(tx("interface.load.replace.no"))}</button>`, true, false);
     return;
   }
-  load(text, source);
+  loadSpectra(text, source, bytes);
 }
 /* ---------- score-matched controls ---------- */
 // A verdict means little on its own in a complex lysate: the model calls many known-real PSMs false
@@ -6593,8 +6677,8 @@ function controlRates(i, cfg) {
   return n ? {lo: m.lo, hi: m.hi, n, answers, outcomes} : null;
 }
 const scoreRange = R => tx("interface.controls.range", {lo: fmt(R.lo, 1), hi: fmt(R.hi, 1)});
-function load(text, source) {
-  const specs = parseMgf(text);
+// specs is given where the busy bar parsed the text a step before.
+function load(text, source, specs = parseMgf(text)) {
   if (!specs.length) { banner(txh("interface.load.empty", {source}), true); return; }
   Object.assign(S, {specs, source, cur: 0, walks: new Map(), zoom: null, cursor: null, pending: null});
   S.ctlMatch.clear();
@@ -7943,7 +8027,7 @@ $("banner").addEventListener("click", e => {
   if (!b) return;
   const p = S.pending;
   S.pending = null;
-  if (b.dataset.load === "yes" && p) load(p.text, p.source); else banner(S.bannerHtml, false);
+  if (b.dataset.load === "yes" && p) loadSpectra(p.text, p.source, p.bytes); else banner(S.bannerHtml, false);
 });
 function pointsOutside(pts) {
   if (!S.zoom) return false;
@@ -8565,14 +8649,14 @@ $("thr").addEventListener("input", readCfg);
 ["prom", "tol", "tolUnit", "nearly", "covMode", "major"].forEach(id => $(id).addEventListener("change", readCfg));
 $("covMode").innerHTML = Object.entries(COVER_MODES).map(([k, m]) => `<option value="${k}"${k === DEFAULTS.coverMode ? " selected" : ""}>` +
   `${esc(tx("interface.settings.coverage.option", {name: m.name, short: m.short}))}</option>`).join("");
-$("ctlfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => loadControls(t, f.name)); e.target.value = ""; });
-$("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => requestLoad(t, f.name)); e.target.value = ""; });
+$("ctlfile").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => loadControlsFile(t, f.name, f.size)); e.target.value = ""; });
+$("file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => requestLoad(t, f.name, f.size)); e.target.value = ""; });
 $("example").addEventListener("click", () => requestLoad($("example-mgf").textContent, "example"));
 document.addEventListener("dragover", e => e.preventDefault());
 document.addEventListener("drop", e => {
   e.preventDefault();
   const f = e.dataTransfer.files[0];
-  if (f) f.text().then(t => requestLoad(t, f.name));
+  if (f) f.text().then(t => requestLoad(t, f.name, f.size));
 });
 
 function ctlCell(i, w, A, cfg) {

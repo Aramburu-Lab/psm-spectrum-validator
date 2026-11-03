@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PSM Spectrum Validator guide</title>
+<style>
+:root{
+  --bg:#FCFCFD;--surface:#FFFFFF;--surface-2:#F4F6F8;--ink:#181B1F;--muted:#5B6168;--faint:#8A9098;
+  --line:#E4E7EB;--line-strong:#D2D7DD;--b:#0072B2;--y:#E69F00;--link:#0B5CAD;
+  --shadow:0 1px 2px rgba(16,24,40,.05),0 10px 28px -16px rgba(16,24,40,.25);
+  --sans:"Helvetica Neue",Helvetica,Arial,system-ui,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;--r:12px}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101316;--surface:#1A1E22;--surface-2:#22272D;--ink:#E7E9EC;--muted:#9BA2AA;--faint:#727A83;
+  --line:#2A2F36;--line-strong:#3A4047;--b:#56B4E9;--link:#8AB4F8;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 14px 34px -18px rgba(0,0,0,.7);color-scheme:dark}}
+html{background:var(--bg)}
+/* No width cap on text, as on the validator: it runs to the edge of its box. */
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.55;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app{max-width:1360px;margin:0 auto;padding-block:8px 48px}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--b);outline-offset:2px}
+a{color:var(--link)}
+code{font-family:var(--mono);font-size:.9em;overflow-wrap:anywhere}
+.top{display:flex;flex-wrap:wrap;gap:8px 28px;align-items:flex-end;justify-content:space-between;padding-block:14px;
+  border-bottom:1px solid var(--line)}
+.brand{display:flex;gap:12px;align-items:flex-start;min-width:0}
+.mark{flex:none;width:30px;height:30px;margin-top:3px}
+.mark i{display:block;height:4px;border-radius:2px;margin-bottom:3px}
+.mark i:nth-child(1){width:30px;background:var(--y)}.mark i:nth-child(2){width:14px;background:var(--b)}
+.mark i:nth-child(3){width:22px;background:var(--y)}.mark i:nth-child(4){width:9px;background:var(--b)}
+h1{font-size:21px;line-height:1.2;margin:0}
+.sub{margin:3px 0 0;color:var(--muted);font-size:15px}
+.count{margin:0;color:var(--muted);font-size:15px}
+.bar{height:4px;margin-top:14px;border-radius:2px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--b);transition:width .3s}
+.card{margin-top:20px;padding:22px 24px;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow)}
+.card h2{margin:0 0 12px;font-size:24px;line-height:1.25}
+.card h2:focus{outline:none}
+.card p{margin:0 0 12px}
+.hint{color:var(--muted);font-size:15.5px}
+.code{position:relative;margin:14px 0;border:1px solid var(--line);border-radius:8px;background:var(--surface-2)}
+.code pre{margin:0;padding:12px 86px 12px 14px;font-family:var(--mono);font-size:15px;line-height:1.5;
+  white-space:pre-wrap;overflow-wrap:anywhere}
+.code .flag{white-space:nowrap}
+.code .copy{position:absolute;top:7px;right:7px;padding:4px 12px;font-size:14px}
+.btn{display:inline-flex;align-items:center;padding:9px 18px;border:1px solid var(--line-strong);border-radius:8px;
+  background:var(--surface)}
+.btn:hover{border-color:var(--faint)}
+.btn.primary{background:var(--ink);color:var(--bg);border-color:var(--ink)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:10px;margin-top:20px}
+.choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:10px;margin-top:16px}
+.choice{display:flex;flex-direction:column;gap:3px;padding:14px 16px;text-align:left;border:1px solid var(--line-strong);
+  border-radius:10px;background:var(--surface)}
+.choice:hover{border-color:var(--b)}
+.choice[aria-pressed="true"]{border-color:var(--b);box-shadow:inset 0 0 0 1px var(--b)}
+.choice strong{font-size:17px}
+.choice span{color:var(--muted);font-size:15px}
+.tag{align-self:flex-start;padding:1px 8px;border-radius:999px;background:var(--surface-2);color:var(--muted);
+  font-size:13px;font-style:normal}
+.field{display:block;margin:14px 0}
+.field b{display:block;margin-bottom:4px}
+.field input{box-sizing:border-box;width:100%;padding:9px 11px;border:1px solid var(--line-strong);border-radius:8px;
+  background:var(--surface);font-family:var(--mono);font-size:15px}
+.field .hint{display:block;margin-top:4px}
+table{border-collapse:collapse;margin:6px 0 14px;font-size:15.5px}
+th,td{padding:6px 14px 6px 0;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{color:var(--muted);font-weight:600}
+details{margin-top:6px}
+summary{cursor:pointer;color:var(--link)}
+details table{margin-top:10px}
+.nav{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+.textbtn{padding:4px 0;border:0;background:none;color:var(--link);text-decoration:underline}
+.textbtn:disabled{visibility:hidden}
+@media (max-width:600px){.card{padding:18px 16px}.card h2{font-size:21px}}
+@media (prefers-reduced-motion:reduce){.bar i{transition:none}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div><h1>PSM Spectrum Validator</h1><p class="sub">From a FragPipe search to judged spectra, one step at a time</p></div></div>
+    <p class="count" id="count" aria-live="polite"></p>
+  </header>
+  <div class="bar" aria-hidden="true"><i id="bar"></i></div>
+  <main class="card" id="step"></main>
+  <nav class="nav"><button type="button" class="textbtn" id="back">Back</button>
+    <button type="button" class="textbtn" id="restart">Start over</button></nav>
+</div>
+
+<script id="guide-core">
+// The guide's steps and the commands they show, with no page behind them, so a test walks them in node.
+var GuideCore = (() => {
+  const REPO = "https://github.com/Aramburu-Lab/psm-spectrum-validator";
+  const ZIP = `${REPO}/archive/refs/heads/main.zip`;
+  const VALIDATOR = "https://aramburu-lab.github.io/psm-spectrum-validator/spectrum_validator.html";
+  const DIR = "psm-spectrum-validator-main";
+
+  // Quoted only where the shell would split, expand or redirect the word. Single quotes keep everything literal in
+  // both shells; an apostrophe inside is written '\'' in a POSIX shell and '' in PowerShell.
+  function quote(word, os) {
+    if (os === "windows") return /^[\w.:\\/=+-]+$/.test(word) ? word : `'${word.replace(/'/g, "''")}'`;
+    return /^[\w.:/=+@%,-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
+  }
+  const join = (dir, file, os) => dir.replace(/[\\/]+$/, "") + (os === "windows" ? "\\" : "/") + file;
+  const script = s => s.os === "windows"
+    ? ".\\.venv\\Scripts\\python.exe scripts\\python\\export_mgf.py" : ".venv/bin/python scripts/python/export_mgf.py";
+
+  // Docker sees the two folders under fixed names. --mount, unlike -v, refuses a folder that does not exist rather than
+  // making an empty one; the spectra are mounted read-only, and no network is given, since the export needs none.
+  function exportCommand(s, match, file, limits) {
+    const q = word => quote(word, s.os), pick = match ? [`--match ${q(match)}`] : [];
+    if (s.route === "docker") {
+      const mount = (src, dst, ro) => `--mount ${q(`type=bind,src=${src},dst=${dst}${ro ? ",readonly" : ""}`)}`;
+      return [`docker run --rm --network none${s.os === "linux" ? ' --user "$(id -u):$(id -g)"' : ""}`,
+        mount(s.results, "/results"), mount(s.spectra, "/spectra", true), "export-mgf",
+        "--workdir /results --spectra-dir /spectra", ...pick, ...limits, `--out /results/${file}`].join(" ");
+    }
+    return [script(s), `--workdir ${q(s.results)}`, `--spectra-dir ${q(s.spectra)}`, ...pick, ...limits,
+      `--out ${q(join(s.results, file, s.os))}`].join(" ");
+  }
+
+  const COMMANDS = {
+    download_server: () => `git clone ${REPO}.git ${DIR}\ncd ${DIR}`,
+    python_check: s => s.os === "windows" ? "py --version" : "python3 --version",
+    python_install: s => s.os === "windows"
+      ? "py -m venv .venv\n.\\.venv\\Scripts\\python.exe -m pip install -r requirements.txt"
+      : "python3 -m venv .venv\n.venv/bin/python -m pip install -r requirements.txt",
+    python_selftest: s => `${script(s)} --selftest`,
+    docker_build: () => "docker build -t export-mgf .",
+    docker_selftest: () => "docker run --rm export-mgf --selftest",
+    export: s => exportCommand(s, s.match, "spectra.mgf", []),
+    controls: s => exportCommand(s, s.ctlMatch, "controls.mgf", ["--per-protein 50", "--max-spectra 8000"]),
+    copy_back: s => ["scp", ...["spectra.mgf", ...(s.controls ? ["controls.mgf"] : [])]
+      .map(file => quote(`you@server:${join(s.results, file, "server")}`, "server")), "."].join(" "),
+  };
+
+  const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
+  const hint = html => `<p class="hint">${html}</p>`;
+  const code = name => `<div class="code"><pre data-cmd="${name}"></pre><button type="button" class="btn copy">Copy</button></div>`;
+  const field = (key, label, help) =>
+    `<label class="field"><b>${label}</b><input data-key="${key}" spellcheck="false" autocomplete="off"><span class="hint">${help}</span></label>`;
+  const desktop = s => s.os !== "server";
+  const python = s => s.route === "python", docker = s => s.route === "docker";
+  const HOLDS = "the folder that holds <code>spectrum_validator.html</code>";
+  const KEEP_OPEN = hint("Keep it open: every command from here runs in it.");
+  const SELFTEST = "The script builds a small FragPipe search of its own, exports it and reads the file back.";
+  const SELFTEST_OK = hint("It prints a line that begins <code>export_mgf self-test ok</code>.");
+  const TROUBLE = `<details><summary>If it stops with a message</summary><table>
+<tr><th>The message says</th><th>What to do</th></tr>
+<tr><td><code>is not a directory</code>, or <code>bind source path does not exist</code></td><td>A folder's path is mistyped. Go back to the step where you pasted it.</td></tr>
+<tr><td><code>no psm.tsv in</code></td><td>Choose FragPipe's output folder, the one that holds a folder per experiment.</td></tr>
+<tr><td><code>no *.mzML directly in</code></td><td>Choose the folder of your spectra: the <code>.raw</code> files with MSFragger's <code>_uncalibrated.mzML</code> beside them, or the <code>.mzML</code> files you searched.</td></tr>
+<tr><td><code>no mzML found</code>, after a run's name</td><td>That run's file is in another folder. Add <code>--spectra-dir</code> and that folder to the command.</td></tr>
+<tr><td><code>0  spectra written</code></td><td>The pattern matched no protein. Check it against the Protein column of <code>psm.tsv</code>.</td></tr>
+<tr><td><code>cannot import pyteomics.mzml</code></td><td>Run the command exactly as shown, in the tool's folder.</td></tr></table></details>`;
+
+  const STEPS = [
+    {id: "try", title: "See what you will do",
+      body: () => `<p>Open the ${link(VALIDATOR, "PSM Spectrum Validator")} and press <b>Example set</b>. Answer one spectrum's questions with <b>Yes</b> or <b>No</b> until a verdict appears.</p>${hint("This is what you will do with your own spectra. It runs in your browser, with nothing to install.")}`},
+    {id: "os", kind: "choice", key: "os", title: "Where are your FragPipe results?",
+      body: () => "<p>The export reads your search's results and spectra files, so it runs on the computer that holds them.</p>",
+      choices: [{value: "windows", label: "On a Windows computer"}, {value: "mac", label: "On a Mac"},
+        {value: "linux", label: "On a Linux computer"},
+        {value: "server", label: "On a Linux server or cluster", note: "One you log in to with ssh."}],
+      // A server has the Python route only; leaving it asks for the route again.
+      apply: (s, os) => ({...s, os, route: os === "server" ? "python" : s.os === "server" ? null : s.route})},
+    {id: "download", when: desktop, title: "Download the tool",
+      body: s => `<p>Download ${link(ZIP, `${DIR}.zip`)} and ${{windows: "right-click it and choose <b>Extract All</b>", mac: "double-click it", linux: "unpack it, for example with <code>unzip</code>"}[s.os]}.</p>${hint(`You get ${HOLDS}. Keep it where you keep your tools.`)}`},
+    {id: "download_server", when: s => s.os === "server", title: "Download the tool on the server",
+      body: () => `<p>Log in to the server and run these two lines. They download the tool into a folder named <code>${DIR}</code> and go into it.</p>${code("download_server")}${KEEP_OPEN}`},
+    {id: "route", kind: "choice", key: "route", when: desktop, title: "How will you run the export?",
+      body: () => "<p>Both ways run the same script and write the same file.</p>",
+      choices: [{value: "docker", label: "With Docker", note: "One program to install, and no Python. Best if you do not use Python."},
+        {value: "python", label: "With Python", note: "Python 3.10 or newer. Best if you already use it."}]},
+    {id: "docker_install", when: docker, title: "Install Docker and start it",
+      body: s => s.os === "linux"
+        ? `<p>Install Docker as ${link("https://docs.docker.com/engine/install/", "Docker's guide for your distribution")} describes, and start it.</p>${hint("If a docker command later says permission denied, follow that guide's steps for running Docker as a non-root user.")}`
+        : `<p>Install ${link("https://docs.docker.com/get-started/get-docker/", "Docker Desktop")} and open it. Wait until it shows that Docker is running.</p>${s.os === "windows" ? hint("Restart the computer if the installer asks. This guide keeps your place.") : ""}`},
+    {id: "terminal", when: desktop, title: "Open a terminal in the tool's folder",
+      body: s => `<p>${{
+        windows: `In File Explorer, open ${HOLDS}; Windows may have unpacked it into a second folder of the same name. Click the address bar, type <code>powershell</code> and press Enter.`,
+        mac: `Open <b>Terminal</b>, from Applications, Utilities. Type <code>cd</code> and a space, drag ${HOLDS} onto the window, and press Return.`,
+        linux: `Open ${HOLDS} in your file manager, right-click inside it and choose <b>Open in Terminal</b>.`}[s.os]}</p>${KEEP_OPEN}`},
+    {id: "python_check", when: python, title: "Check that Python 3.10 or newer is installed",
+      body: s => `<p>Run this line. It must print Python 3.10 or newer.</p>${code("python_check")}${hint(`If it prints an older version or is not found, install Python from ${link("https://www.python.org/downloads/", "python.org")} and run the line again.${s.os === "server" ? " On a cluster, a newer Python is usually loaded with <code>module load</code>; your cluster's documentation names it." : ""}`)}`},
+    {id: "python_install", when: python, title: "Install the export's packages",
+      body: s => `<p>Run these two lines. They make a Python environment in the folder <code>.venv</code> and install pyteomics and psims into it, at the versions the export was tested with.</p>${code("python_install")}${s.os === "linux" || s.os === "server" ? hint("If the first line says ensurepip is not available, install your system's python3-venv package, or ask your administrators.") : ""}`},
+    {id: "python_selftest", when: python, title: "Check the export script",
+      body: () => `<p>Run this line. ${SELFTEST}</p>${code("python_selftest")}${SELFTEST_OK}`},
+    {id: "docker_build", when: docker, title: "Build the export image",
+      body: () => `<p>Run this line. It builds an image named export-mgf that holds Python, the export script and its packages.</p>${code("docker_build")}${hint("The first build downloads Python and the packages. It is done when the prompt returns with no line that says ERROR.")}`},
+    {id: "docker_check", when: docker, title: "Check the image",
+      body: () => `<p>Run this line. ${SELFTEST}</p>${code("docker_selftest")}${SELFTEST_OK}`},
+    {id: "folders", title: "Tell this guide where your search is", ready: s => Boolean(s.results && s.spectra),
+      body: s => `<p>Paste the paths of two folders from your FragPipe search. The commands that follow are written with them.</p>
+${field("results", "Results folder", "FragPipe's output folder. It holds one folder per experiment, each with a <code>psm.tsv</code>.")}
+${field("spectra", "Spectra folder", "Where your input files are. For Thermo <code>.raw</code> files, MSFragger writes a <code>_uncalibrated.mzML</code> beside each one, and those are read; for <code>.mzML</code> input, the <code>.mzML</code> files are. Bruker <code>.d</code> is not read.")}
+${hint(`${{
+        windows: "To copy a folder's path, hold Shift, right-click the folder in File Explorer and choose <b>Copy as path</b>.",
+        mac: "To copy a folder's path, right-click it in Finder, hold Option and choose <b>Copy as Pathname</b>.",
+        linux: "To copy a folder's path, copy it from your file manager's address bar.",
+        server: "Type the paths as the server sees them; <code>pwd</code> prints the path of the folder you are in."}[s.os]} The paths stay in this browser.`)}`},
+    {id: "match", title: "Choose the proteins to judge",
+      body: () => `<p>Type a pattern for the proteins whose spectra you want to judge, or leave it empty for every protein.</p>
+${field("match", "Proteins", "A regular expression, matched against the Protein ID, Protein and Mapped Proteins columns of <code>psm.tsv</code>.")}
+<table><tr><th>You want</th><th>Type</th></tr>
+<tr><td>a few proteins</td><td>their accessions joined by <code>|</code>, such as <code>P02769|Q9Y6K9</code></td></tr>
+<tr><td>the entries your FASTA marks with a tag in their header</td><td>the tag, such as <code>novel</code></td></tr>
+<tr><td>every protein</td><td>nothing</td></tr></table>
+${hint("The export takes the best-scoring PSM of each peptide, at most 3 peptides per protein and 500 spectra in all.")}`},
+    {id: "export", title: "Export the spectra",
+      body: () => `<p>Run this command. It writes <code>spectra.mgf</code> into your results folder.</p>${code("export")}${hint("It counts every PSM it left out and why, and ends with <code>[export-mgf] wrote</code> and the file's path.")}${TROUBLE}`},
+    // Controls with no pattern would be every protein, the opposite of trusted ones; Skip is there instead.
+    {id: "controls", kind: "optional", skip: "Skip controls", title: "Export controls, if you have trusted proteins",
+      ready: s => Boolean(s.ctlMatch),
+      body: () => `<p>Controls are PSMs you trust, such as those of well-known housekeeping proteins. The validator sets each spectrum you judge beside the controls nearest it in score. Type a pattern for them, then run the command.</p>
+${field("ctlMatch", "Trusted proteins", "A pattern as in the step before, such as their accessions joined by <code>|</code>.")}
+${code("controls")}${hint("It writes <code>controls.mgf</code> into your results folder, with up to 50 peptides per protein and 8,000 spectra in all.")}`},
+    {id: "copy_back", when: s => s.os === "server", title: "Copy the files to your own computer",
+      body: () => `<p>On your own computer, open a terminal in a folder of your choice and run this line, with your login in place of <code>you@server</code>.</p>${code("copy_back")}${hint("WinSCP or your cluster's file browser work as well.")}`},
+    {id: "open", title: "Open the validator",
+      body: s => s.os === "server"
+        ? `<p>On your own computer, open the ${link(VALIDATOR, "PSM Spectrum Validator")}.</p>${hint("Your files are read in the browser and never leave your computer.")}`
+        : `<p>Double-click <code>spectrum_validator.html</code> in the tool's folder, or open the ${link(VALIDATOR, "same page online")}.</p>${hint("Either way, your files are read in the browser and never leave your computer.")}`},
+    {id: "load", title: "Load your spectra",
+      body: s => `<p>Press <b>Load MGF</b> and choose <code>spectra.mgf</code> ${s.os === "server" ? "where you copied it" : "from your results folder"}. The list of spectra fills.</p>`},
+    {id: "controls_load", when: s => s.controls === true, title: "Load your controls",
+      body: () => "<p>Press <b>Load controls</b> and choose <code>controls.mgf</code>.</p>"},
+    {id: "tolerance", title: "Set the fragment tolerance",
+      body: () => `<p>Open <b>Settings</b> and set <b>Fragment tolerance</b> and its unit to those your FragPipe search used.</p>${hint("Leave the other settings as they are unless you have a reason to change them.")}`},
+    {id: "judge", title: "Judge your spectra",
+      body: () => `<p>Pick a spectrum in the list and answer each question with <b>Yes</b> or <b>No</b> until a verdict appears, then pick the next.</p>${hint("The most likely reasoning is filled in for each answer. Press an answered question to see it beside the model's, or <b>See all questions</b> for the whole flowchart.")}`},
+    {id: "save", title: "Save your answers",
+      body: () => "<p>Press <b>Export results to csv</b>. The file holds every answer, mark, statement and verdict.</p>"},
+    {id: "done", kind: "end", title: "You are done",
+      body: () => `<p>If you disagree with the reference model, press <b>Have a different opinion?</b> under its reply. <b>Help make this tool better</b>, at the top of the page, takes any other note.</p>${hint(`The flowchart is adapted from Deutsch, E.W. et al., <i>Nature</i> 654, 813–825 (2026), ${link("https://doi.org/10.1038/s41586-026-10459-x", "doi.org/10.1038/s41586-026-10459-x")}. Please cite it when you use or describe the flowchart.`)}`},
+  ];
+
+  const step = id => STEPS.find(st => st.id === id);
+  const shown = (s, st) => !st.when || st.when(s);
+  const first = s => STEPS.find(st => shown(s, st)).id;
+  function next(s, id) {
+    const after = STEPS.slice(STEPS.findIndex(st => st.id === id) + 1).find(st => shown(s, st));
+    return after ? after.id : null;
+  }
+  const choose = (s, id, value) => { const st = step(id); return st.apply ? st.apply(s, value) : {...s, [st.key]: value}; };
+  // Counted as if the choices not yet made took the Python route and kept the controls.
+  function progress(s, id) {
+    const seen = STEPS.filter(st => shown({...s, route: s.route ?? "python", controls: s.controls ?? true}, st));
+    return {k: seen.findIndex(st => st.id === id) + 1, n: seen.length};
+  }
+  const command = (name, s) => COMMANDS[name](s);
+  return {STEPS, step, shown, first, next, choose, progress, command, quote};
+})();
+</script>
+
+<script>
+(() => {
+  "use strict";
+  const C = GuideCore, $ = id => document.getElementById(id), card = $("step"), back = $("back");
+  const KEY = "psm-spectrum-validator-guide";
+  const platform = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
+  const here = /win/i.test(platform) ? "windows" : /mac/i.test(platform) ? "mac" : /linux|x11/i.test(platform) ? "linux" : null;
+  let saved = {};
+  try { saved = JSON.parse(localStorage.getItem(KEY)) || {}; } catch { /* a private window or blocked storage starts afresh */ }
+  let s = saved.s || {}, at = saved.at, trail = saved.trail || [];
+  if (!C.step(at) || !C.shown(s, C.step(at))) { at = C.first(s); trail = []; }
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify({s, at, trail})); } catch { /* kept for this visit only */ } };
+  // A path pasted with Copy as path arrives in double quotes.
+  const clean = (key, value) => (key === "results" || key === "spectra" ? value.trim().replace(/^(["'])(.*)\1$/, "$2") : value.trim());
+
+  function go(id) { trail.push(at); at = id; save(); render(); }
+  // An option stays whole on its line, since a browser breaks after any hyphen; the text copied is unchanged.
+  const flagsWhole = text => text.replace(/[&<>]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;"})[c])
+    .replace(/(^|\s)(--?[\w-]+)/g, '$1<span class="flag">$2</span>');
+  function fill(st) {
+    card.querySelectorAll("pre[data-cmd]").forEach(pre => { pre.innerHTML = flagsWhole(C.command(pre.dataset.cmd, s)); });
+    const done = card.querySelector("[data-act=done]");
+    if (done) done.disabled = Boolean(st.ready && !st.ready(s));
+  }
+  function render() {
+    const st = C.step(at);
+    const choices = st.kind === "choice" ? `<div class="choices">${st.choices.map(c =>
+      `<button type="button" class="choice" data-value="${c.value}" aria-pressed="${s[st.key] === c.value}"><strong>${c.label}</strong>${
+        c.value === here ? '<em class="tag">This computer</em>' : ""}${c.note ? `<span>${c.note}</span>` : ""}</button>`).join("")}</div>` : "";
+    const actions = {choice: "", end: '<button type="button" class="btn primary" data-act="restart">Start over</button>',
+      optional: `<button type="button" class="btn primary" data-act="done">I've done it</button><button type="button" class="btn" data-act="skip">${st.skip}</button>`}[st.kind]
+      ?? '<button type="button" class="btn primary" data-act="done">I\'ve done it</button>';
+    card.innerHTML = `<h2 tabindex="-1">${st.title}</h2>${st.body(s)}${choices}<div class="actions">${actions}</div>`;
+    card.querySelectorAll("input[data-key]").forEach(input => {
+      input.value = s[input.dataset.key] || "";
+      input.addEventListener("input", () => { s = {...s, [input.dataset.key]: clean(input.dataset.key, input.value)}; save(); fill(st); });
+    });
+    fill(st);
+    const {k, n} = C.progress(s, at);
+    $("count").textContent = `Step ${k} of ${n}`;
+    $("bar").style.width = `${(100 * k) / n}%`;
+    back.disabled = !trail.length;
+    window.scrollTo(0, 0);
+    card.querySelector("h2").focus();
+  }
+
+  card.addEventListener("click", async e => {
+    const btn = e.target.closest("button");
+    if (!btn) return;
+    if (btn.classList.contains("copy")) {
+      const pre = btn.previousElementSibling;
+      try { await navigator.clipboard.writeText(pre.textContent); btn.textContent = "Copied"; }
+      catch {
+        // A browser that refuses the clipboard here still lets the person copy what is selected.
+        getSelection().selectAllChildren(pre);
+        btn.textContent = "Selected";
+      }
+      setTimeout(() => { btn.textContent = "Copy"; }, 1600);
+    } else if (btn.dataset.value) go(C.next(s = C.choose(s, at, btn.dataset.value), at));
+    else if (btn.dataset.act === "restart") { s = {}; trail = []; at = C.first(s); save(); render(); }
+    else if (btn.dataset.act) { if (at === "controls") s = {...s, controls: btn.dataset.act === "done"}; go(C.next(s, at)); }
+  });
+  back.addEventListener("click", () => { if (trail.length) { at = trail.pop(); save(); render(); } });
+  $("restart").addEventListener("click", () => { s = {}; trail = []; at = C.first(s); save(); render(); });
+  render();
+})();
+</script>
+</body>
+</html>
