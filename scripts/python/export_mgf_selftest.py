@@ -224,6 +224,26 @@ def check_refusals(em, tmp, work, bare):
         assert fh.read() == "an earlier export\n"
 
 
+def check_nothing_written(em, tmp, bare):
+    """A spectra folder of other runs only: no MGF is written, and an earlier one stays as it was.
+
+    The folder passes the check for spectra, so every row is dropped for a missing mzML. Written,
+    the header-only file was refused by the validator after the export had said "wrote".
+    """
+    kept, elsewhere = os.path.join(tmp, "kept_empty.mgf"), os.path.join(tmp, "elsewhere")
+    os.mkdir(elsewhere)
+    em.write_mzml(os.path.join(elsewhere, "runZ_uncalibrated.mzML"), fx.SCANS)
+    with open(kept, "w", encoding="utf-8") as fh:
+        fh.write("an earlier export\n")
+    err = io.StringIO()
+    with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+        code = em.main(["--workdir", bare, "--spectra-dir", elsewhere, "--out", kept])
+    said = err.getvalue()
+    assert code == 1 and f"{kept} was not written" in said and f" {em.NO_MZML}" in said, said
+    with open(kept, encoding="utf-8") as fh:
+        assert fh.read() == "an earlier export\n"
+
+
 def run(em):
     """Every check, on the export_mgf module handed in."""
     em.require_mzml_reader()
@@ -234,7 +254,9 @@ def run(em):
         # Raised, not warned: read_spectrum then counts every scan unreadable.
         warnings.filterwarnings("error", fx.INDEX_FALLBACK)
         work, dirs, out = check_planted(em, tmp)
-        check_refusals(em, tmp, work, check_spectra_dir(em, tmp))
+        bare = check_spectra_dir(em, tmp)
+        check_refusals(em, tmp, work, bare)
+        check_nothing_written(em, tmp, bare)
         check_mzml_names(em, tmp)
         os.replace(os.path.join(work, "expA", "psm.tsv"), os.path.join(work, "psm.tsv"))
         top, _ = em.export(work, dirs, re.compile("XORF"), out)
@@ -249,6 +271,7 @@ def run(em):
         "under --all-ranks, and its two charges are one spectrum; a top-level psm.tsv is read; "
         "--spectra-dir with no manifest writes the manifest's records; a run's <run>.mzML is "
         "read where it has no <run>_uncalibrated.mzML, which wins where it has both; bad paths, "
-        "and spectra neither finds, stop before --out is opened; scans are read file by file and "
-        "written in Hyperscore order"
+        "and spectra neither finds, stop before --out is opened; a spectra folder of other runs "
+        "writes nothing and leaves --out as it was; scans are read file by file and written in "
+        "Hyperscore order"
     )

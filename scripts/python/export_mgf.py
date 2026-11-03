@@ -383,7 +383,7 @@ def mgf_record(row, parsed, mz, inten, counts, keys):
 
 
 def export(workdir, data_dirs, pattern, out, limits=DEFAULTS):
-    """Write the MGF.
+    """Write the MGF, unless no record survived: the validator refuses a file of none.
 
     Args:
         workdir: FragPipe results directory holding <experiment>/psm.tsv.
@@ -414,8 +414,9 @@ def export(workdir, data_dirs, pattern, out, limits=DEFAULTS):
     head += [f"{n:,} {k}" for k, n in sorted(counts.items()) if k not in ORDER]
     head = [_comment(h) for h in head]
     head.insert(1, "# Here an equals sign is written %3D and a percent sign %25")
-    with open(out, "w", encoding="utf-8") as fh:
-        fh.write("\n".join(head) + "\n\n" + "\n".join(records))
+    if records:  # an earlier export at out is never replaced by an empty one
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write("\n".join(head) + "\n\n" + "\n".join(records))
     return counts, runs
 
 
@@ -555,7 +556,7 @@ def main(argv=None):
         argv: Arguments, default sys.argv[1:].
 
     Returns:
-        0 when at least one spectrum was written, 1 when none was.
+        0 when at least one spectrum was written; 1 when none was, with --out left as it was.
     """
     p = _parser()
     args = p.parse_args(argv)
@@ -582,8 +583,13 @@ def main(argv=None):
             print(f"[export-mgf] {n:>9,}  {k}")
     for run, path in sorted(runs.items()):
         print(f"[export-mgf] run {run}: {path or 'no mzML found'}")
+    if not counts[WRITTEN]:
+        why = max(DROPS, key=counts.__getitem__) if counts[READ] else READ
+        sys.stderr.write(f"[export-mgf] no spectrum to write, so {args.out} was not written; ")
+        sys.stderr.write(f"the largest count above is {counts[why]:,} {why}\n")
+        return 1
     print(f"[export-mgf] wrote {args.out}")
-    return 0 if counts[WRITTEN] else 1
+    return 0
 
 
 if __name__ == "__main__":

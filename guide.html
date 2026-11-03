@@ -160,7 +160,8 @@ var GuideCore = (() => {
 <tr><td><code>no psm.tsv in</code></td><td>Choose FragPipe's output folder, the one that holds a folder per experiment.</td></tr>
 <tr><td><code>no *.mzML directly in</code></td><td>Choose the folder of your spectra: the <code>.raw</code> files with MSFragger's <code>_uncalibrated.mzML</code> beside them, or the <code>.mzML</code> files you searched.</td></tr>
 <tr><td><code>no mzML found</code>, after a run's name</td><td>That run's file is in another folder. Add <code>--spectra-dir</code> and that folder to the command.</td></tr>
-<tr><td><code>0  spectra written</code></td><td>The pattern matched no protein. Check it against the Protein column of <code>psm.tsv</code>.</td></tr>
+<tr><td><code>no spectrum to write</code>, then <code>rows whose run has no</code></td><td>The spectra folder holds other runs' files. Choose the folder of the files this search read, named on the <code>run</code> lines above.</td></tr>
+<tr><td><code>no spectrum to write</code>, then <code>rows not matching --match</code></td><td>The pattern matched no protein. Check it against the Protein column of <code>psm.tsv</code>.</td></tr>
 <tr><td><code>cannot import pyteomics.mzml</code></td><td>Run the command exactly as shown, in the tool's folder.</td></tr></table></details>`;
 
   const STEPS = [
@@ -203,7 +204,7 @@ var GuideCore = (() => {
     {id: "folders", title: "Tell this guide where your search is", ready: s => Boolean(s.results && s.spectra),
       body: s => `<p>Paste the paths of two folders from your FragPipe search. The commands that follow are written with them.</p>
 ${field("results", "Results folder", "FragPipe's output folder. It holds one folder per experiment, each with a <code>psm.tsv</code>.")}
-${field("spectra", "Spectra folder", "Where your input files are. For Thermo <code>.raw</code> files, MSFragger writes a <code>_uncalibrated.mzML</code> beside each one, and those are read; for <code>.mzML</code> input, the <code>.mzML</code> files are. Bruker <code>.d</code> is not read.")}
+${field("spectra", "Spectra folder", "The folder of the files this same search read, which carry the run names in its <code>psm.tsv</code>. For Thermo <code>.raw</code> files, MSFragger writes a <code>_uncalibrated.mzML</code> beside each one, and those are read; for <code>.mzML</code> input, the <code>.mzML</code> files are. Bruker <code>.d</code> is not read.")}
 ${hint(`${{
         windows: "To copy a folder's path, hold Shift, right-click the folder in File Explorer and choose <b>Copy as path</b>.",
         mac: "To copy a folder's path, right-click it in Finder, hold Option and choose <b>Copy as Pathname</b>.",
@@ -218,7 +219,7 @@ ${field("match", "Proteins", "A regular expression, matched against the Protein 
 <tr><td>every protein</td><td>nothing</td></tr></table>
 ${hint("The export takes the best-scoring PSM of each peptide, at most 3 peptides per protein and 500 spectra in all.")}`},
     {id: "export", title: "Export the spectra",
-      body: () => `<p>Run this command. It writes <code>spectra.mgf</code> into the tool's folder, the one this terminal is in.</p>${code("export")}${hint("It counts every PSM it left out and why, and ends with <code>[export-mgf] wrote</code> and the file's path.")}${TROUBLE}`},
+      body: () => `<p>Run this command. It writes <code>spectra.mgf</code> into the tool's folder, the one this terminal is in.</p>${code("export")}${hint("It counts every PSM it left out and why, and ends with <code>[export-mgf] wrote</code> and the file's name. When no spectrum survives, it writes no file and says why.")}${TROUBLE}`},
     // Controls with no pattern would be every protein, the opposite of trusted ones; Skip is there instead.
     {id: "controls", kind: "optional", skip: "Skip controls", title: "Export controls, if you have trusted proteins",
       ready: s => Boolean(s.ctlMatch),
