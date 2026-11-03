@@ -108,22 +108,24 @@ var GuideCore = (() => {
     if (os === "windows") return /^[\w.:\\/=+-]+$/.test(word) ? word : `'${word.replace(/'/g, "''")}'`;
     return /^[\w.:/=+@%,-]+$/.test(word) ? word : `'${word.replace(/'/g, "'\\''")}'`;
   }
-  const join = (dir, file, os) => dir.replace(/[\\/]+$/, "") + (os === "windows" ? "\\" : "/") + file;
   const script = s => s.os === "windows"
     ? ".\\.venv\\Scripts\\python.exe scripts\\python\\export_mgf.py" : ".venv/bin/python scripts/python/export_mgf.py";
 
-  // Docker sees the two folders under fixed names. --mount, unlike -v, refuses a folder that does not exist rather than
-  // making an empty one; the spectra are mounted read-only, and no network is given, since the export needs none.
+  // The MGF goes to the folder the terminal is in, never into FragPipe's folders, which are only read. Docker sees that
+  // folder as /data, the image's working folder, and the two FragPipe folders read-only under fixed names. --mount,
+  // unlike -v, refuses a folder that does not exist rather than making an empty one, and no network is given, since
+  // the export needs none.
   function exportCommand(s, match, file, limits) {
     const q = word => quote(word, s.os), pick = match ? [`--match ${q(match)}`] : [];
     if (s.route === "docker") {
-      const mount = (src, dst, ro) => `--mount ${q(`type=bind,src=${src},dst=${dst}${ro ? ",readonly" : ""}`)}`;
+      const read = (src, dst) => `--mount ${q(`type=bind,src=${src},dst=${dst},readonly`)}`;
+      const here = s.os === "windows" ? '"type=bind,src=${PWD},dst=/data"' : '"type=bind,src=$PWD,dst=/data"';
       return [`docker run --rm --network none${s.os === "linux" ? ' --user "$(id -u):$(id -g)"' : ""}`,
-        mount(s.results, "/results"), mount(s.spectra, "/spectra", true), "export-mgf",
-        "--workdir /results --spectra-dir /spectra", ...pick, ...limits, `--out /results/${file}`].join(" ");
+        `--mount ${here}`, read(s.results, "/results"), read(s.spectra, "/spectra"), "export-mgf",
+        "--workdir /results --spectra-dir /spectra", ...pick, ...limits, `--out ${file}`].join(" ");
     }
     return [script(s), `--workdir ${q(s.results)}`, `--spectra-dir ${q(s.spectra)}`, ...pick, ...limits,
-      `--out ${q(join(s.results, file, s.os))}`].join(" ");
+      `--out ${file}`].join(" ");
   }
 
   const COMMANDS = {
@@ -138,7 +140,7 @@ var GuideCore = (() => {
     export: s => exportCommand(s, s.match, "spectra.mgf", []),
     controls: s => exportCommand(s, s.ctlMatch, "controls.mgf", ["--per-protein 50", "--max-spectra 8000"]),
     copy_back: s => ["scp", ...["spectra.mgf", ...(s.controls ? ["controls.mgf"] : [])]
-      .map(file => quote(`you@server:${join(s.results, file, "server")}`, "server")), "."].join(" "),
+      .map(file => `you@server:${DIR}/${file}`), "."].join(" "),
   };
 
   const link = (href, text) => `<a href="${href}" target="_blank" rel="noopener">${text}</a>`;
@@ -206,7 +208,7 @@ ${hint(`${{
         windows: "To copy a folder's path, hold Shift, right-click the folder in File Explorer and choose <b>Copy as path</b>.",
         mac: "To copy a folder's path, right-click it in Finder, hold Option and choose <b>Copy as Pathname</b>.",
         linux: "To copy a folder's path, copy it from your file manager's address bar.",
-        server: "Type the paths as the server sees them; <code>pwd</code> prints the path of the folder you are in."}[s.os]} The paths stay in this browser.`)}`},
+        server: "Type the paths as the server sees them; <code>pwd</code> prints the path of the folder you are in."}[s.os]} The export only reads these folders, and the paths stay in this browser.`)}`},
     {id: "match", title: "Choose the proteins to judge",
       body: () => `<p>Type a pattern for the proteins whose spectra you want to judge, or leave it empty for every protein.</p>
 ${field("match", "Proteins", "A regular expression, matched against the Protein ID, Protein and Mapped Proteins columns of <code>psm.tsv</code>.")}
@@ -216,21 +218,21 @@ ${field("match", "Proteins", "A regular expression, matched against the Protein 
 <tr><td>every protein</td><td>nothing</td></tr></table>
 ${hint("The export takes the best-scoring PSM of each peptide, at most 3 peptides per protein and 500 spectra in all.")}`},
     {id: "export", title: "Export the spectra",
-      body: () => `<p>Run this command. It writes <code>spectra.mgf</code> into your results folder.</p>${code("export")}${hint("It counts every PSM it left out and why, and ends with <code>[export-mgf] wrote</code> and the file's path.")}${TROUBLE}`},
+      body: () => `<p>Run this command. It writes <code>spectra.mgf</code> into the tool's folder, the one this terminal is in.</p>${code("export")}${hint("It counts every PSM it left out and why, and ends with <code>[export-mgf] wrote</code> and the file's path.")}${TROUBLE}`},
     // Controls with no pattern would be every protein, the opposite of trusted ones; Skip is there instead.
     {id: "controls", kind: "optional", skip: "Skip controls", title: "Export controls, if you have trusted proteins",
       ready: s => Boolean(s.ctlMatch),
       body: () => `<p>Controls are PSMs you trust, such as those of well-known housekeeping proteins. The validator sets each spectrum you judge beside the controls nearest it in score. Type a pattern for them, then run the command.</p>
 ${field("ctlMatch", "Trusted proteins", "A pattern as in the step before, such as their accessions joined by <code>|</code>.")}
-${code("controls")}${hint("It writes <code>controls.mgf</code> into your results folder, with up to 50 peptides per protein and 8,000 spectra in all.")}`},
+${code("controls")}${hint("It writes <code>controls.mgf</code> beside <code>spectra.mgf</code>, with up to 50 peptides per protein and 8,000 spectra in all.")}`},
     {id: "copy_back", when: s => s.os === "server", title: "Copy the files to your own computer",
-      body: () => `<p>On your own computer, open a terminal in a folder of your choice and run this line, with your login in place of <code>you@server</code>.</p>${code("copy_back")}${hint("WinSCP or your cluster's file browser work as well.")}`},
+      body: () => `<p>On your own computer, open a terminal in a folder of your choice and run this line, with your login in place of <code>you@server</code>.</p>${code("copy_back")}${hint("The path starts from your home folder on the server, where the download step put the tool. WinSCP or your cluster's file browser work as well.")}`},
     {id: "open", title: "Open the validator",
       body: s => s.os === "server"
         ? `<p>On your own computer, open the ${link(VALIDATOR, "PSM Spectrum Validator")}.</p>${hint("Your files are read in the browser and never leave your computer.")}`
         : `<p>Double-click <code>spectrum_validator.html</code> in the tool's folder, or open the ${link(VALIDATOR, "same page online")}.</p>${hint("Either way, your files are read in the browser and never leave your computer.")}`},
     {id: "load", title: "Load your spectra",
-      body: s => `<p>Press <b>Load MGF</b> and choose <code>spectra.mgf</code> ${s.os === "server" ? "where you copied it" : "from your results folder"}. The list of spectra fills.</p>`},
+      body: s => `<p>Press <b>Load MGF</b> and choose <code>spectra.mgf</code> ${s.os === "server" ? "where you copied it" : "in the tool's folder"}. The list of spectra fills.</p>`},
     {id: "controls_load", when: s => s.controls === true, title: "Load your controls",
       body: () => "<p>Press <b>Load controls</b> and choose <code>controls.mgf</code>.</p>"},
     {id: "tolerance", title: "Set the fragment tolerance",
