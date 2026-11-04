@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PSM Spectrum Validator</title>
-<meta id="release" name="release" content="2026-11-03" data-build="999e065a">
+<meta id="release" name="release" content="2026-11-03" data-build="e318de8e">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one bench. Settings across the top, the spectrum list on the left, one large annotated
@@ -455,7 +455,7 @@ dialog.note p{margin:10px 0 0}
 </header>
 <details class="settings" id="settings"><summary data-t="interface.settings.title"></summary>
   <div class="controls">
-    <span class="ctl"><label for="thr" data-t="interface.settings.threshold"></label><button type="button" class="qmark" data-setterm="lines" data-t-label="interface.settings.threshold.explain" aria-expanded="false" aria-controls="setgloss">?</button> <input type="range" id="thr" min="0" max="30" step="0.5" value="5"><output id="thrOut" for="thr">5%</output></span>
+    <span class="ctl"><label for="thr" data-t="interface.settings.threshold"></label><button type="button" class="qmark" data-setterm="lines" data-t-label="interface.settings.threshold.explain" aria-expanded="false" aria-controls="setgloss">?</button> <input type="range" id="thr" min="0" max="30" step="0.5" value="10"><output id="thrOut" for="thr">10%</output></span>
     <span class="ctl"><label for="prom" data-t="interface.settings.prominent"></label><button type="button" class="qmark" data-setterm="lines" data-t-label="interface.settings.prominent.explain" aria-expanded="false" aria-controls="setgloss">?</button> <input type="number" id="prom" min="1" max="100" step="1" value="20"> <span data-t="interface.settings.prominent.unit"></span></span>
     <label class="ctl" for="nearly"><span data-t="interface.settings.nearly"></span> <input type="number" id="nearly" min="1" max="100" step="1" value="80"> <span data-t="interface.settings.nearly.unit"></span></label>
     <label class="ctl" for="covMode"><span data-t="interface.settings.coverage"></span> <select id="covMode"></select></label>
@@ -662,7 +662,7 @@ PROTEIN=synthetic
 498.25725 107382
 498.30535 12505
 499.25952 29368
-521.26539 90000
+521.26539 140000
 580.46955 23154
 580.62976 27325
 595.30853 391473
@@ -1037,7 +1037,7 @@ PROTEIN=synthetic
 508.78873 24039
 528.49201 14377
 552.33229 29292
-563.35514 80000
+563.35514 130000
 568.34376 1000000
 569.34810 312036
 584.98986 19791
@@ -1185,7 +1185,7 @@ PROTEIN=synthetic
 496.18472 3226
 515.82424 19043
 578.99110 9763
-609.23376 80000
+609.23376 130000
 612.33081 80000
 638.59033 8844
 644.12703 18226
@@ -2044,7 +2044,9 @@ Why each edit was made, kept here since Rytis asked on 2026-11-02 for the panel'
 be short: example 2's b1 and its isotope were added because its N-terminal acetyl makes the
 paper expect b1, and its b5 and isotope removed to leave a b4 to b6 gap for its unannotated
 ion, both keeping its Good verdict; examples 6 and 8 each gained an unannotated peak to keep
-their isobaric caution on show.
+their isobaric caution on show. When Rytis moved the base peak threshold from 5% to 10% on
+2026-11-03, those three unannotated peaks were each raised by the same 5 points, so example
+2's stays above the threshold for its Good verdict and examples 6 and 8 keep their cautions.
 
 ## info.example.button
 Download small example
@@ -2061,9 +2063,9 @@ The small example
 ## info.example.edits
 **Edited examples** - three built-in examples were changed by hand, each to keep what it was built to show:
 
-- Example 2, LVNELTEFAK: b1 at m/z 156.10191 and its isotope at 157.10527 added, b5 at 611.34140 and its isotope at 612.34288 removed.
-- Example 6, VLPVPQK: an unannotated peak added at m/z 563.35514, for its isobaric caution.
-- Example 8, YICDNQDTISSK: an unannotated peak added at m/z 609.23376, for its isobaric caution.
+- Example 2, LVNELTEFAK: b1 at m/z 156.10191 and its isotope at 157.10527 added, b5 at 611.34140 and its isotope at 612.34288 removed, and the unannotated peak at 521.26539 raised from 9% to 14% of the base peak.
+- Example 6, VLPVPQK: an unannotated peak added at m/z 563.35514 for its isobaric caution, and raised from 8% to 13% of the base peak.
+- Example 8, YICDNQDTISSK: an unannotated peak added at m/z 609.23376 for its isobaric caution, and raised from 8% to 13% of the base peak.
 
 # After the button
 
@@ -4388,7 +4390,8 @@ const REPORTERS = [["126", 126.127726], ["127N", 127.124761], ["127C", 127.13108
   ["134N", 134.148245], ["134C", 134.154565], ["135N", 135.151600]];
 const TMT_TAGS = [[229.162932, 11], [304.207146, 18]];
 
-const DEFAULTS = Object.freeze({thresholdPct: 5, prominentPct: 20, tol: 20, tolUnit: "ppm", nearlyPct: 80, coverMode: "combined",
+// The base peak threshold is the lab's practice, 10%, as Rytis set it on 2026-11-03; it was 5% before.
+const DEFAULTS = Object.freeze({thresholdPct: 10, prominentPct: 20, tol: 20, tolUnit: "ppm", nearlyPct: 80, coverMode: "combined",
   majorGap: 3});  // consecutive cleavages with no b or y ion that make a gap major, capped at n-1
 // How the coverage question reads "nearly complete", least to most strict, as Rytis set them out on 2026-10-28; the
 // paper's tryptic pattern, a fourth, went on 2026-11-02. Each implies the one before it, since a bond either series
@@ -5706,9 +5709,10 @@ function synthSpec(seq, z, extra = []) {
 }
 
 function selftest(exampleText) {
-  // The checks below pin the strict coverage reading, the default, by its name, so a default moved later leaves them as
-  // they are.
-  const STRICT = Object.freeze({...DEFAULTS, coverMode: "combined"});
+  // The checks below pin the strict coverage reading, the default, by its name, and the 5% base peak threshold they were
+  // written at, the default until Rytis moved it to 10% on 2026-11-03, so a default moved later leaves them as they are.
+  // The examples' designed outcomes are about the default, and read DEFAULTS.
+  const STRICT = Object.freeze({...DEFAULTS, coverMode: "combined", thresholdPct: 5});
   const check = (c, msg) => { if (!c) throw new Error(`selftest: ${msg}`); };
   const close = (a, b, tol, msg) => check(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
   // Independent oracles: published masses, not this file's own arithmetic.
@@ -5776,13 +5780,14 @@ function selftest(exampleText) {
   // Its outcome is no longer Excellent since 2026-10-30, as b5 is among its three most intense peaks with no known
   // explanation; the unannotated-ions answer is what this checks.
   check(assess(synthSpec("VEADIAGHGQEVLIR", 3, [[1001.057, 10]]), STRICT).verdicts.q2.answer === "no", "a 2+ reading heavier than the precursor is not tried");
-  // Every example lands on its designed outcome, and together they walk every edge of the chart.
+  // Every example lands on its designed outcome at the default the page opens with, and together they walk every edge
+  // of the chart.
   const expected = ["excellent", "good", "contam", "close", "contam", "close", "fp", "lowinfo"];
   const specs = parseMgf(exampleText), edges = new Set();
   check(specs.length === expected.length, `expected ${expected.length} examples, got ${specs.length}`);
   specs.forEach((s, i) => {
     check(!s.error, `example ${i + 1}: ${s.error}`);
-    const A = assess(s, STRICT);
+    const A = assess(s, DEFAULTS);
     check(A.modelOutcome === expected[i], `example ${i + 1} ${s.pep.seq}: model says ${A.modelOutcome}, designed ${expected[i]} via ${JSON.stringify(A.modelPath)}`);
     check(Math.abs(precursorFit(s.pep, s.charge, s.pepmass).ppm) < 5, `example ${i + 1} precursor`);
     A.modelPath.forEach(([q, a]) => edges.add(q + a));
@@ -5915,55 +5920,55 @@ function selftest(exampleText) {
   check(judge("yes", {peaks: [], regions: [[0, 5000]]}, v, P0).agree, "judge: a region over everything");
   check(!judge("yes", {peaks: [], regions: [[0, 1]]}, v, P0).agree, "judge: nothing relevant marked");
   check(!judge("no", {peaks: ev.map(e => e.i), regions: []}, v, P0).agree, "judge: wrong answer");
-  // Statements are held to the line the question's own rule uses: example 2's lone 9% unannotated
+  // Statements are held to the line the question's own rule uses: example 2's lone 14% unannotated
   // ion clears the 5% threshold that counts for extra peaks, but not the prominence line.
-  const A1 = assess(specs[1], STRICT), D1 = A1.D, nine = D1.unexplained[0], one = {peaks: [nine.i], regions: []};
+  const A1 = assess(specs[1], STRICT), D1 = A1.D, lone2 = D1.unexplained[0], one = {peaks: [lone2.i], regions: []};
   const say = (q, s) => ({kind: "signal", quant: q, signal: s});
-  check(Math.round(nine.rel) === 9 && D1.unexplained.length === 1, "example 2 has one 9% unannotated ion");
+  check(Math.round(lone2.rel) === 14 && D1.unexplained.length === 1, "example 2 has one 14% unannotated ion");
   check(claimCheck("q4", say("some", "strong"), one, D1).holds && !claimCheck("q8", say("some", "strong"), one, D1).holds, "the line follows the question");
   check(claimCheck("q8", say("all", "weak"), one, D1).holds && !claimCheck("q4", say("all", "weak"), one, D1).holds, "and so does its opposite");
   check(claimLine("q6", D1).pct === STRICT.thresholdPct, "peaks beyond the end are held to the threshold");
   check(claimLine("q4", D1).pct === STRICT.thresholdPct && claimCheck("q4", say("some", "strong"), one, D1).holds, "extra peaks are held to the threshold");
   check(!claimCheck("q4", say("all", "weak"), {peaks: [], regions: []}, D1).holds, "a statement about no peaks holds nothing");
-  const two = {peaks: [D1.peaks.find(q => !q.above).i, nine.i], regions: []};
-  check(claimCheck("q8", say("some", "strong"), two, D1).against.map(e => e.i).join() === String(nine.i), "a failed statement names the peak nearest the line");
+  const two = {peaks: [D1.peaks.find(q => !q.above).i, lone2.i], regions: []};
+  check(claimCheck("q8", say("some", "strong"), two, D1).against.map(e => e.i).join() === String(lone2.i), "a failed statement names the peak nearest the line");
   check(claimCheck("q4", say("some", "strong"), two, D1).holds && !claimCheck("q4", say("all", "strong"), two, D1).holds &&
     claimCheck("q4", say("some", "weak"), two, D1).holds, "some is at least one, all is every one");
   const named = (sig, k) => ({kind: "signal", quant: "some", signal: sig, subset: [k]}), under = two.peaks[0];
-  check(claimCheck("q4", named("strong", nine.i), two, D1).holds && !claimCheck("q4", named("weak", nine.i), two, D1).holds &&
+  check(claimCheck("q4", named("strong", lone2.i), two, D1).holds && !claimCheck("q4", named("weak", lone2.i), two, D1).holds &&
     claimCheck("q4", named("weak", under), two, D1).holds, "in some of them, named: the statement holds of each one named");
   check(A1.verdicts.q4.answer === "no" && judgeReasoned("no", one, A1.verdicts.q4, D1, "q4", say("some", "strong")).agree, "right answer, marks and statement agree");
   const Jf = judgeReasoned("no", one, A1.verdicts.q4, D1, "q4", say("all", "weak"));
-  check(!Jf.agree && Jf.sameAnswer && Jf.covered && Jf.pointAt[0].i === nine.i, "a false statement alone makes it disagree, and is pointed at");
+  check(!Jf.agree && Jf.sameAnswer && Jf.covered && Jf.pointAt[0].i === lone2.i, "a false statement alone makes it disagree, and is pointed at");
   // The unannotated-ions statement, as Rytis set it out on 2026-10-29: the ions are in the gaps between annotated ions.
-  // Example 2's 9% ion lies in its b gap from b4 to b6 with a mass defect between theirs, so it holds and the Yes agrees;
+  // Example 2's 14% ion lies in its b gap from b4 to b6 with a mass defect between theirs, so it holds and the Yes agrees;
   // b9, its last annotated ion, is in no gap.
   const inGaps = {kind: "between", says: "yes"}, b9 = D1.peaks.find(q => q.label === "b9");
   check(A1.verdicts.q2.answer === "yes" && betweenCheck(inGaps, one, D1).holds && judgeReasoned("yes", one, A1.verdicts.q2, D1, "q2", inGaps).agree,
     "an unannotated ion inside the annotated stretch is in a gap, and the Yes agrees");
   check(b9.mz === D1.annHi && !betweenCheck(inGaps, {peaks: [b9.i], regions: []}, D1).holds, "the last annotated ion is not in a gap");
-  // A peak at 10% of the base peak, 41.3217 above b9, leaves the model's Yes as it is. Said to be in a gap with the 9%
-  // ion, it makes the statement false and alone is pointed at, by its m/z and the stretch's; the 9% ion picked out holds.
+  // A peak at 10% of the base peak, 41.3217 above b9, leaves the model's Yes as it is. Said to be in a gap with the 14%
+  // ion, it makes the statement false and alone is pointed at, by its m/z and the stretch's; the 14% ion picked out holds.
   const s2 = specs[1], over = D1.annHi + 41.3217, pk2 = s2.mz.map((m, k) => [m, s2.int[k]]).concat([[over, Math.max(...s2.int) / 10]]).sort((a, b) => a[0] - b[0]);
   const A2o = assess({...s2, mz: pk2.map(x => x[0]), int: pk2.map(x => x[1])}, STRICT), far = A2o.D.peaks.find(q => q.mz === over);
-  const both = {peaks: [A2o.D.peaks.find(q => q.mz === nine.mz).i, far.i], regions: []}, Jo = judgeReasoned("yes", both, A2o.verdicts.q2, A2o.D, "q2", inGaps);
+  const both = {peaks: [A2o.D.peaks.find(q => q.mz === lone2.mz).i, far.i], regions: []}, Jo = judgeReasoned("yes", both, A2o.verdicts.q2, A2o.D, "q2", inGaps);
   check(far.above && !far.explained && far.isoOf === null && A2o.verdicts.q2.answer === "yes" && !Jo.agree && Jo.sameAnswer && Jo.covered &&
     Jo.pointAt.length === 1 && Jo.pointAt[0].i === far.i &&
     Jo.pointAt[0].note === tx("model.check.between.peak", {mz: "1100.855"}),
     "a peak above the last annotated ion makes the statement false, and is pointed at");
   check(betweenCheck(inGaps, {peaks: [both.peaks[0]], regions: []}, A2o.D).holds, "the statement is about the marked ions alone");
   // An annotated ion is in no gap wherever it lies, as the 2026-10-29 verification found: b2, inside the stretch and
-  // marked with the 9% ion, makes the statement false and alone is pointed at, as the annotated ion it is.
-  const b2 = D1.peaks.find(q => q.label === "b2"), Jb = judgeReasoned("yes", {peaks: [nine.i, b2.i], regions: []}, A1.verdicts.q2, D1, "q2", inGaps);
+  // marked with the 14% ion, makes the statement false and alone is pointed at, as the annotated ion it is.
+  const b2 = D1.peaks.find(q => q.label === "b2"), Jb = judgeReasoned("yes", {peaks: [lone2.i, b2.i], regions: []}, A1.verdicts.q2, D1, "q2", inGaps);
   check(b2.mz > D1.annLo && b2.mz < D1.annHi && !Jb.agree && Jb.sameAnswer && Jb.covered && Jb.pointAt.length === 1 && Jb.pointAt[0].i === b2.i &&
     Jb.pointAt[0].note === tx("model.check.between.annotated", {mz: "255.170", ion: "b2"}) &&
     Jb.claim.summary === tx("model.check.between.many", {inside: 1, n: 2}) &&
     betweenCheck(inGaps, {peaks: [b2.i], regions: []}, D1).summary === tx("model.check.between.one.annotated", {ion: "b2"}),
     "an annotated ion inside the stretch makes the statement false, and is pointed at as one");
   // One test for the statement and the rule, as the 2026-10-30 verification asked: the statement held of peaks the rule
-  // never counts. Example 2 is given an isotope of its 9% ion, at 6% of the base peak; over every peak of that record
+  // never counts. Example 2 is given an isotope of its 14% ion, at 6% of the base peak; over every peak of that record
   // and of the eight examples, the statement holds of a peak marked alone exactly where the rule's Yes rests on it.
-  const isoMz = nine.mz + MASS.C13, pk3 = s2.mz.map((m, k) => [m, s2.int[k]]).concat([[isoMz, Math.max(...s2.int) * 0.06]]).sort((a, b) => a[0] - b[0]);
+  const isoMz = lone2.mz + MASS.C13, pk3 = s2.mz.map((m, k) => [m, s2.int[k]]).concat([[isoMz, Math.max(...s2.int) * 0.06]]).sort((a, b) => a[0] - b[0]);
   const A2i = assess({...s2, mz: pk3.map(x => x[0]), int: pk3.map(x => x[1])}, STRICT), isoPk = A2i.D.peaks.find(q => q.mz === isoMz);
   const lone1 = (D, p) => betweenCheck(inGaps, {peaks: [p.i], regions: []}, D);
   for (const D of [A2i.D, ...specs.map(s => assess(s, STRICT).D)]) {
@@ -5972,33 +5977,33 @@ function selftest(exampleText) {
     check(D.peaks.every(p => lone1(D, p).holds === inRule.has(p.i)), "the statement holds of a peak exactly where the rule counts it");
   }
   // Each peak it is false of is said to be what it is: that isotope, of m/z 521.265; y3's isotope at m/z 366.222, no
-  // annotated ion either; and the 9% ion under a threshold of 10%, which the model does not see.
+  // annotated ion either; and the 14% ion under a threshold of 15%, which the model does not see.
   const isoSaid = (D, p) => { const C = lone1(D, p); return [C.summary, ...C.against.map(e => e.note)].join(" | "); };
   const m521 = tx("model.check.ion.mz", {mz: "521.265"}), y3i = D1.peaks.find(q => q.kind === "iso" && D1.peaks[q.isoOf].label === "y3");
   check(isoPk.isoOf !== null && isoSaid(A2i.D, isoPk) === `${tx("model.check.between.one.isotope", {ion: m521})} | ${tx("model.check.between.isotope", {mz: "522.269", ion: m521})}` &&
     isoSaid(D1, y3i) === `${tx("model.check.between.one.isotope", {ion: "y3"})} | ${tx("model.check.between.isotope", {mz: "366.222", ion: "y3"})}` &&
-    isoSaid(assess(specs[1], {...STRICT, thresholdPct: 10}).D, nine) ===
-      `${tx("model.check.between.one.below", {pct: 10})} | ${tx("model.check.between.below", {mz: "521.265", rel: "9.0%", pct: 10})}`,
+    isoSaid(assess(specs[1], {...STRICT, thresholdPct: 15}).D, lone2) ===
+      `${tx("model.check.between.one.below", {pct: 15})} | ${tx("model.check.between.below", {mz: "521.265", rel: "14.0%", pct: 15})}`,
     "an isotope peak and a peak under the threshold are said to be what they are");
   // The No statements, as Rytis set them on 2026-11-02: example 2's one unannotated ion is a candidate, so "not in the
   // gaps" is false of it and points at it, true of the peak 41.3217 above b9 alone, and false with nothing marked; on
   // example 2 without that ion, which then has no unannotated ion, there are none, and that holds.
-  const notIn = {kind: "between", says: "no"}, nineOff = s2.mz.map((m, k) => k).filter(k => Math.abs(s2.mz[k] - nine.mz) > 0.01 && Math.abs(s2.mz[k] - nine.mz - MASS.C13) > 0.01);
-  const Anone = assess({...s2, mz: nineOff.map(k => s2.mz[k]), int: nineOff.map(k => s2.int[k])}, STRICT), Cn = betweenCheck(notIn, one, D1);
-  check(!Cn.holds && Cn.supports === "no" && Cn.against.length === 1 && Cn.against[0].i === nine.i && betweenCheck(notIn, {peaks: [far.i], regions: []}, A2o.D).holds &&
+  const notIn = {kind: "between", says: "no"}, lone2Off = s2.mz.map((m, k) => k).filter(k => Math.abs(s2.mz[k] - lone2.mz) > 0.01 && Math.abs(s2.mz[k] - lone2.mz - MASS.C13) > 0.01);
+  const Anone = assess({...s2, mz: lone2Off.map(k => s2.mz[k]), int: lone2Off.map(k => s2.int[k])}, STRICT), Cn = betweenCheck(notIn, one, D1);
+  check(!Cn.holds && Cn.supports === "no" && Cn.against.length === 1 && Cn.against[0].i === lone2.i && betweenCheck(notIn, {peaks: [far.i], regions: []}, A2o.D).holds &&
     !betweenCheck(notIn, {peaks: [], regions: []}, D1).holds && !Anone.D.peaks.some(unannotated) && betweenCheck(notIn, {peaks: [], regions: []}, Anone.D).holds &&
     betweenCheck(notIn, {peaks: [], regions: []}, Anone.D).summary === tx("model.check.between.empty", {pct: 5}), "the No statements: not in the gaps, and none at all");
   // The paper's criterion (iii): a candidate lies in a gap of one series, between its two flanking ions, with a mass
-  // defect between theirs. Example 2's b ions skip b5, so b4 and b6 flank a gap; its y ions skip none. Its 9% ion at
+  // defect between theirs. Example 2's b ions skip b5, so b4 and b6 flank a gap; its y ions skip none. Its 14% ion at
   // m/z 521.265 has a defect of +0.265 against b4's +0.256 and b6's +0.388, exact for Ac-LVNE and Ac-LVNELT.
   const g2 = D1.gaps, v2a = A1.verdicts.q2;
   check(g2.length === 1 && g2[0].series === "b" && g2[0].lo.label === "b4" && g2[0].hi.label === "b6" && fmt(g2[0].lo.d) === "0.256" && fmt(g2[0].hi.d) === "0.388" &&
     v2a.evidence.length === 1 && v2a.evidence[0].note === tx("model.q2.yes.note", {mz: "521.265", gap: tx("model.q2.gap", {series: "b", lo: "b4", hi: "b6"}), lo: "b4", lomz: "498.256",
       hi: "b6", himz: "712.388", defect: "+0.265", lodefect: "+0.256", hidefect: "+0.388", charge: supCharge(1)}),
-    "example 2's one gap is in its b ions, from b4 to b6, and its 9% ion is named in it with both flanking ions");
+    "example 2's one gap is in its b ions, from b4 to b6, and its 14% ion is named in it with both flanking ions");
   // A test peak in that gap at 5% of the base: its defect inside the two flanks' widened by 20 ppm at each end is a
   // candidate, just outside is not; a peak between annotated ions that lies in no gap of either series is no candidate,
-  // as example 2 with its b5 back has none, where the peptide-average window it replaced counted its 9% ion.
+  // as example 2 with its b5 back has none, where the peptide-average window it replaced counted its 14% ion.
   const with2 = (...extra) => { const pk = s2.mz.map((m, k) => [m, s2.int[k]]).concat(extra).sort((u, w) => u[0] - w[0]);
     return assess({...s2, mz: pk.map(x => x[0]), int: pk.map(x => x[1])}, STRICT); };
   const at2 = mz => { const A = with2([mz, D1.base * 0.05]); return {A, p: A.D.peaks.find(q => q.mz === mz)}; };
@@ -6354,7 +6359,7 @@ function selftest(exampleText) {
   // counts it; onShare's seven carry 10%, exactly on the line, which is not less, and the marked peaks are pointed at,
   // strongest first. Nothing marked holds only where there is nothing to mark.
   const xs = {kind: "extra", says: "less"}, unmarked0 = {peaks: [], regions: [], residues: []}, allU = D => ({peaks: D.unexplained.map(p => p.i), regions: []});
-  const Dsh = assess(onShare, STRICT).D, xsh = extraCheck(xs, allU(Dsh), Dsh), xiso = extraCheck(xs, {peaks: [A2i.D.peaks.find(q => q.mz === nine.mz).i], regions: []}, A2i.D);
+  const Dsh = assess(onShare, STRICT).D, xsh = extraCheck(xs, allU(Dsh), Dsh), xiso = extraCheck(xs, {peaks: [A2i.D.peaks.find(q => q.mz === lone2.mz).i], regions: []}, A2i.D);
   const shareOf = D => pctTxt(sum(leftUnexplained(D).map(p => p.int)) / sum(D.peaks.filter(p => p.above).map(p => p.int)));
   check(extraCheck(xs, one, D1).holds && !xsh.holds && xsh.summary === tx("model.check.extra.over", {share: "10%", line: "10%"}) && xsh.against.length === 7 &&
     xsh.against.every((e, k, all) => !k || Dsh.peaks[all[k - 1].i].int >= Dsh.peaks[e.i].int) && xsh.against[0].note === tx("model.check.extra.peak", {mz: fmt(Dsh.peaks[xsh.against[0].i].mz), rel: relTxt(Dsh.peaks[xsh.against[0].i])}) &&
