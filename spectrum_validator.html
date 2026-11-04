@@ -1,7 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>PSM Spectrum Validator</title>
-<meta id="release" name="release" content="2026-11-03" data-build="e318de8e">
+<meta id="release" name="release" content="2026-11-04" data-build="ea91eccf">
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
 /* Layout: one bench. Settings across the top, the spectrum list on the left, one large annotated
@@ -1694,6 +1694,9 @@ Isobaric caution
 
 ## export.column.own
 Own words
+
+## export.column.build
+Validator build
 
 # Words in the table's cells
 
@@ -8683,7 +8686,7 @@ $("export").addEventListener("click", async () => {
     tx("export.column.changed"), tx("export.column.verdict.user"), tx("export.column.verdict.model"), tx("export.column.path.user"),
     tx("export.column.path.model"), tx("export.column.agreed"), tx("export.column.marks"), tx("export.column.statements"),
     tx("export.column.controls"), tx("export.column.nearly"), tx("export.column.coverage"), tx("export.column.major"),
-    tx("export.column.mods"), tx("export.column.isobaric"), tx("export.column.own")];
+    tx("export.column.mods"), tx("export.column.isobaric"), tx("export.column.own"), tx("export.column.build")];
   const rows = [head.map(csvField).join(",")];
   S.walks.forEach((w, i) => {
     const s = S.specs[i], done = w.steps.filter(st => st.phase === "judged");
@@ -8696,8 +8699,9 @@ $("export").addEventListener("click", async () => {
     // An automatic answer is marked on the path and left out of Steps agreed, as Rytis set it on 2026-11-02.
     const given = done.filter(st => !st.auto), agreed = given.filter(st => judgeStep(st, i).agree).length;
     const peaks = A.D.peaks;
-    // The prominent ions said in the person's own words, for model training, as Rytis set it on 2026-11-02: the last
-    // column, so every other keeps its place.
+    // The prominent ions said in the person's own words, for model training, as Rytis set it on 2026-11-02, then the
+    // page's build, which Rytis added on 2026-11-04 so an expert's file names the model that judged it. Each was added
+    // last, so every earlier column keeps its place.
     const own = done.filter(st => st.node === "q3").flatMap(st => { const c = claimOf(st), D3 = assessFor(i, st.cfg).D;
       return c ? Object.entries(c.ions).filter(([, s]) => s.explain === "own").map(([k, s]) => tx("export.own.item", {ion: ionName(D3, D3.peaks[+k]), words: s.words})) : []; }).join("; ");
     const marks = done.map(st => { const m = marksOf(st); return `${FLOW[st.node].short}: ${m.peaks.map(k => fmt(peaks[k].mz)).join(",")}` +
@@ -8710,7 +8714,7 @@ $("export").addEventListener("click", async () => {
       `${agreed}/${given.length}`, marks,
       done.filter(st => claimOf(st)).map(st => `${FLOW[st.node].short}: ${claimText(st, i, "export.statements.and")}`).join("; "), ctlCell(i, w, A, c),
       c1.nearlyPct, COVER_MODES[c1.coverMode].name, m7 < c7.majorGap ? tx("export.major.capped", {gap: c7.majorGap, used: m7}) : c7.majorGap,
-      modCheck(s.pep).text, isobaricText(A.D) || tx("export.isobaric.none"), own]
+      modCheck(s.pep).text, isobaricText(A.D) || tx("export.isobaric.none"), own, RELEASE.build]
       .map(csvField).join(","));
   });
   if (rows.length === 1) { banner(txh("export.nothing"), true, false); return; }
